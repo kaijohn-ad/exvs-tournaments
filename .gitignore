@@ -1,0 +1,6 @@
+# Repository-level ignores
+web/node_modules/
+web/.svelte-kit/
+web/.env.local
+web/.output/
+web/build/
