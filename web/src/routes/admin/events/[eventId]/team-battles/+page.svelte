@@ -96,7 +96,9 @@
 						<div class="battle-header">
 							<div class="battle-info">
 								<h3 class="battle-title">
-									{getTeamName(battle.team_a_id)} vs {getTeamName(battle.team_b_id)}
+									<a href="/admin/events/{data.eventId}/team-battles/{battle.id}">
+										{getTeamName(battle.team_a_id)} vs {getTeamName(battle.team_b_id)}
+									</a>
 								</h3>
 								<div class="battle-meta">
 									<span class="meta-item">スロット数: {battle.slots_count}</span>
@@ -124,6 +126,11 @@
 										{getResultText(battle.result)}
 									</span>
 								{/if}
+							</div>
+							<div class="action-row">
+								<a href="/admin/events/{data.eventId}/team-battles/{battle.id}" class="btn-manage">
+									進行管理 →
+								</a>
 							</div>
 						</div>
 					</div>
@@ -275,6 +282,36 @@
 		display: flex;
 		gap: 0.75rem;
 		align-items: center;
+	}
+
+	.action-row {
+		display: flex;
+		justify-content: flex-end;
+		padding-top: 0.5rem;
+	}
+
+	.btn-manage {
+		padding: 0.5rem 1rem;
+		background: #6366f1;
+		color: white;
+		text-decoration: none;
+		border-radius: 0.5rem;
+		font-size: 0.875rem;
+		font-weight: 600;
+		transition: background 0.2s ease;
+	}
+
+	.btn-manage:hover {
+		background: #4f46e5;
+	}
+
+	.battle-title a {
+		color: inherit;
+		text-decoration: none;
+	}
+
+	.battle-title a:hover {
+		color: #6366f1;
 	}
 
 	.status-badge {
