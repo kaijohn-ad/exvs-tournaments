@@ -3,10 +3,12 @@ import * as playersMemory from './repositories/players';
 import * as tournamentsMemory from './repositories/tournaments';
 import * as pairsMemory from './repositories/pairs';
 import * as teamsMemory from './repositories/teams';
+import * as teamBattlesMemory from './repositories/team-battles';
 import { createPlayersRepositoryD1 } from './repositories/players-d1';
 import { createTournamentsRepositoryD1 } from './repositories/tournaments-d1';
 import { createPairsRepositoryD1 } from './repositories/pairs-d1';
 import { createTeamsRepositoryD1 } from './repositories/teams-d1';
+import { createTeamBattlesRepositoryD1 } from './repositories/team-battles-d1';
 
 const USE_MEMORY = process.env.USE_MEMORY_STORE === 'true' || process.env.USE_MEMORY_STORE === undefined;
 
@@ -42,6 +44,14 @@ export interface DatabaseContext {
 		updateTeam(eventId: string, teamId: string, data: teamsMemory.TeamData): Promise<teamsMemory.TeamRecord>;
 		deleteTeam(eventId: string, teamId: string): Promise<void>;
 		setTeams(eventId: string, teams: teamsMemory.TeamImportData[]): Promise<teamsMemory.TeamRecord[]>;
+	};
+	teamBattles: {
+		listTeamBattles(eventId: string): Promise<teamBattlesMemory.TeamBattleRecord[]>;
+		createTeamBattle(eventId: string, data: teamBattlesMemory.TeamBattleData): Promise<teamBattlesMemory.TeamBattleRecord>;
+		ensureTeamBattle(eventId: string, battleId: string): Promise<teamBattlesMemory.TeamBattleRecord>;
+		updateTeamBattle(eventId: string, battleId: string, data: teamBattlesMemory.TeamBattleData): Promise<teamBattlesMemory.TeamBattleRecord>;
+		deleteTeamBattle(eventId: string, battleId: string): Promise<void>;
+		setTeamBattles(eventId: string, battles: teamBattlesMemory.TeamBattleImportData[]): Promise<teamBattlesMemory.TeamBattleRecord[]>;
 	};
 }
 
@@ -129,13 +139,35 @@ const wrapMemoryTeams = () => ({
 	}
 });
 
+const wrapMemoryTeamBattles = () => ({
+	async listTeamBattles(eventId: string) {
+		return teamBattlesMemory.listTeamBattles(eventId);
+	},
+	async createTeamBattle(eventId: string, data: teamBattlesMemory.TeamBattleData) {
+		return teamBattlesMemory.createTeamBattle(eventId, data);
+	},
+	async ensureTeamBattle(eventId: string, battleId: string) {
+		return teamBattlesMemory.ensureTeamBattle(eventId, battleId);
+	},
+	async updateTeamBattle(eventId: string, battleId: string, data: teamBattlesMemory.TeamBattleData) {
+		return teamBattlesMemory.updateTeamBattle(eventId, battleId, data);
+	},
+	async deleteTeamBattle(eventId: string, battleId: string) {
+		return teamBattlesMemory.deleteTeamBattle(eventId, battleId);
+	},
+	async setTeamBattles(eventId: string, battles: teamBattlesMemory.TeamBattleImportData[]) {
+		return teamBattlesMemory.setTeamBattles(eventId, battles);
+	}
+});
+
 export function getDatabase(event: RequestEvent): DatabaseContext {
 	if (USE_MEMORY) {
 		return {
 			players: wrapMemoryPlayers(),
 			tournaments: wrapMemoryTournaments(),
 			pairs: wrapMemoryPairs(),
-			teams: wrapMemoryTeams()
+			teams: wrapMemoryTeams(),
+			teamBattles: wrapMemoryTeamBattles()
 		};
 	}
 
@@ -145,7 +177,8 @@ export function getDatabase(event: RequestEvent): DatabaseContext {
 			players: wrapMemoryPlayers(),
 			tournaments: wrapMemoryTournaments(),
 			pairs: wrapMemoryPairs(),
-			teams: wrapMemoryTeams()
+			teams: wrapMemoryTeams(),
+			teamBattles: wrapMemoryTeamBattles()
 		};
 	}
 
@@ -153,7 +186,8 @@ export function getDatabase(event: RequestEvent): DatabaseContext {
 		players: createPlayersRepositoryD1(db),
 		tournaments: createTournamentsRepositoryD1(db),
 		pairs: createPairsRepositoryD1(db),
-		teams: createTeamsRepositoryD1(db)
+		teams: createTeamsRepositoryD1(db),
+		teamBattles: createTeamBattlesRepositoryD1(db)
 	};
 }
 
@@ -163,5 +197,6 @@ export function resetForTests() {
 		tournamentsMemory.__resetForTests();
 		pairsMemory.__resetForTests();
 		teamsMemory.__resetForTests();
+		teamBattlesMemory.__resetForTests();
 	}
 }
