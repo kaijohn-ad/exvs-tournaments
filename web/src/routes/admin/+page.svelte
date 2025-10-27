@@ -20,7 +20,10 @@
 					bind:value={eventId}
 				/>
 			</label>
-			<button type="submit" class="primary">プレイヤー管理へ</button>
+			<div class="button-group">
+				<button type="submit" class="primary">プレイヤー管理へ</button>
+				<button type="button" class="secondary" on:click={handleTournamentClick}>トーナメント設定へ</button>
+			</div>
 		</form>
 	</section>
 
@@ -55,9 +58,19 @@
 		void goto(`/admin/events/${trimmed}/entries/players`);
 	};
 
+	const goToTournaments = (id: string) => {
+		const trimmed = id.trim();
+		if (!trimmed) return;
+		void goto(`/admin/events/${trimmed}/tournaments`);
+	};
+
 	const handleSubmit = (event: SubmitEvent) => {
 		event.preventDefault();
 		goToPlayers(eventId);
+	};
+
+	const handleTournamentClick = () => {
+		goToTournaments(eventId);
 	};
 </script>
 
@@ -111,6 +124,12 @@
 		align-items: flex-end;
 	}
 
+	.button-group {
+		display: flex;
+		gap: 0.75rem;
+		flex-wrap: wrap;
+	}
+
 	label {
 		display: grid;
 		gap: 0.45rem;
@@ -148,6 +167,16 @@
 	button.primary:hover {
 		transform: translateY(-1px);
 		box-shadow: 0 10px 20px rgba(37, 99, 235, 0.25);
+	}
+
+	button.secondary {
+		background: rgba(37, 99, 235, 0.1);
+		color: #1d4ed8;
+	}
+
+	button.secondary:hover {
+		transform: translateY(-1px);
+		box-shadow: 0 10px 20px rgba(37, 99, 235, 0.18);
 	}
 
 	.quick-list {
@@ -194,6 +223,10 @@
 		.event-form {
 			flex-direction: column;
 			align-items: stretch;
+		}
+
+		.button-group {
+			flex-direction: column;
 		}
 
 		button {
