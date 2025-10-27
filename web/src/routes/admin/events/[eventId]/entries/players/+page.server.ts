@@ -1,13 +1,7 @@
 import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import {
-	createPlayer,
-	deletePlayer,
-	listPlayers,
-	setPlayers,
-	updatePlayer,
-	type PlayerRecord
-} from '$lib/server/repositories/players';
+import { getDatabase } from '$lib/server/db';
+import type { PlayerRecord } from '$lib/server/repositories/players';
 
 const normalizeText = (value: FormDataEntryValue | null): string | undefined => {
 	if (value == null) {
@@ -19,21 +13,17 @@ const normalizeText = (value: FormDataEntryValue | null): string | undefined => 
 	return text.length > 0 ? text : undefined;
 };
 
-const getPlayers = (eventId: string): PlayerRecord[] =>
-	[...listPlayers(eventId)].sort((a, b) => a.name.localeCompare(b.name, 'ja'));
-
-const serializePlayers = (eventId: string): string =>
-	JSON.stringify(getPlayers(eventId), null, 2);
-
 export const load: PageServerLoad = async (event) => {
 	event.depends(`players:${event.params.eventId}`);
 
-	const players = getPlayers(event.params.eventId);
+	const db = getDatabase(event);
+	const players = await db.players.listPlayers(event.params.eventId);
+	const sortedPlayers = [...players].sort((a, b) => a.name.localeCompare(b.name, 'ja'));
 
 	return {
 		eventId: event.params.eventId,
-		players,
-		playersJson: JSON.stringify(players, null, 2)
+		players: sortedPlayers,
+		playersJson: JSON.stringify(sortedPlayers, null, 2)
 	};
 };
 
@@ -47,9 +37,11 @@ export const actions: Actions = {
 			return fail(400, { type: 'error', source: 'create', message: '名前は必須です。' });
 		}
 
-		const player = createPlayer(event.params.eventId, { name, note });
-		const players = getPlayers(event.params.eventId);
-		const playersJson = JSON.stringify(players, null, 2);
+		const db = getDatabase(event);
+		const player = await db.players.createPlayer(event.params.eventId, { name, note });
+		const players = await db.players.listPlayers(event.params.eventId);
+		const sortedPlayers = [...players].sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+		const playersJson = JSON.stringify(sortedPlayers, null, 2);
 
 		return {
 			success: true,
@@ -57,7 +49,7 @@ export const actions: Actions = {
 			source: 'create',
 			message: `プレイヤー「${player.name}」を追加しました。`,
 			player,
-			players,
+			players: sortedPlayers,
 			playersJson
 		};
 	},
@@ -76,9 +68,11 @@ export const actions: Actions = {
 		}
 
 		try {
-			const player = updatePlayer(event.params.eventId, playerId, { name, note });
-			const players = getPlayers(event.params.eventId);
-			const playersJson = JSON.stringify(players, null, 2);
+			const db = getDatabase(event);
+			const player = await db.players.updatePlayer(event.params.eventId, playerId, { name, note });
+			const players = await db.players.listPlayers(event.params.eventId);
+			const sortedPlayers = [...players].sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+			const playersJson = JSON.stringify(sortedPlayers, null, 2);
 
 			return {
 				success: true,
@@ -86,7 +80,7 @@ export const actions: Actions = {
 				source: 'update',
 				message: `プレイヤー「${player.name}」を更新しました。`,
 				player,
-				players,
+				players: sortedPlayers,
 				playersJson
 			};
 		} catch (error) {
@@ -103,20 +97,23 @@ export const actions: Actions = {
 		}
 
 		try {
-			deletePlayer(event.params.eventId, playerId);
+			const db = getDatabase(event);
+			await db.players.deletePlayer(event.params.eventId, playerId);
 		} catch (error) {
 			return fail(404, { type: 'error', source: 'delete', message: '指定したプレイヤーが見つかりません。' });
 		}
 
-		const players = getPlayers(event.params.eventId);
-		const playersJson = JSON.stringify(players, null, 2);
+		const db = getDatabase(event);
+		const players = await db.players.listPlayers(event.params.eventId);
+		const sortedPlayers = [...players].sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+		const playersJson = JSON.stringify(sortedPlayers, null, 2);
 
 		return {
 			success: true,
 			type: 'success',
 			source: 'delete',
 			message: 'プレイヤーを削除しました。',
-			players,
+			players: sortedPlayers,
 			playersJson
 		};
 	},
@@ -175,7 +172,8 @@ export const actions: Actions = {
 			})
 			.filter(Boolean);
 
-		const imported = setPlayers(event.params.eventId, sanitized as Parameters<typeof setPlayers>[1]);
+		const db = getDatabase(event);
+		const imported = await db.players.setPlayers(event.params.eventId, sanitized as any);
 		const playersJson = JSON.stringify(imported, null, 2);
 		const message =
 			mode === 'editor'

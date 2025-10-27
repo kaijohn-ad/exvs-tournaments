@@ -1,6 +1,6 @@
 # Boost Bracket TODO一覧
 
-最終更新: 2025-10-27 03:17 (UTC)
+最終更新: 2025-10-27 03:35 (UTC)
 
 ## ✅ 完了済み
 - [x] SvelteKit プロジェクト初期化と Cloudflare アダプタ設定
@@ -17,9 +17,17 @@
   - JSONインポート/エクスポート対応
   - JSONエディタ機能
   - 管理トップからの導線追加
+- [x] Cloudflare D1 への永続化層移行とシークレット設定
+  - D1データベーススキーマ設計とマイグレーション作成
+  - プレイヤー・トーナメントリポジトリのD1対応実装
+  - テスト環境でのメモリストア/D1切り替え機能
+  - SvelteKitサーバーハンドラのD1対応
+  - 全テスト通過確認（27 tests passed）
+  - wrangler.toml設定追加
 
 ## 📝 着手予定
-- [ ] Cloudflare D1 への永続化層移行とシークレット設定
+- [ ] D1データベースの本番環境セットアップ（wrangler d1 create実行）
+- [ ] Cloudflare Pages/Functionsへのデプロイ設定
 
 ---
 更新ルール:
