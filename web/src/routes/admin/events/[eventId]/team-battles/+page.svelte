@@ -289,7 +289,7 @@
 			各スロットにプレイヤーを配置してラインナップを管理できます。
 		</p>
 		<p class="note">
-			※ ラインナップ編集機能は今後実装予定です。
+			※ ラインナップ編集は各団体戦の✏️ボタンから行えます。
 		</p>
 	</section>
 </section>
@@ -514,6 +514,27 @@
 		padding: 0.25rem 0.625rem;
 		background: rgba(148, 163, 184, 0.1);
 		border-radius: 0.375rem;
+	}
+
+	.battle-actions {
+		display: flex;
+		gap: 0.5rem;
+		align-items: center;
+	}
+
+	.edit-btn {
+		background: none;
+		border: none;
+		cursor: pointer;
+		font-size: 1.25rem;
+		padding: 0.25rem 0.5rem;
+		opacity: 0.6;
+		transition: opacity 0.2s ease;
+		text-decoration: none;
+	}
+
+	.edit-btn:hover {
+		opacity: 1;
 	}
 
 	.delete-form {
