@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import type { TournamentData, TournamentImportData, TournamentRecord } from './tournaments';
 
 export const createTournamentsRepositoryD1 = (db: D1Database) => {
@@ -38,7 +37,7 @@ export const createTournamentsRepositoryD1 = (db: D1Database) => {
 		},
 
 		async createTournament(eventId: string, data: TournamentData): Promise<TournamentRecord> {
-			const id = randomUUID();
+			const id = crypto.randomUUID();
 			const name = data.name.trim();
 			const format = data.format || 'single-elimination';
 			const seedingMode = data.seedingMode || 'random';
@@ -142,7 +141,7 @@ export const createTournamentsRepositoryD1 = (db: D1Database) => {
 					continue;
 				}
 
-				const id = entry.id?.trim() || randomUUID();
+				const id = entry.id?.trim() || crypto.randomUUID();
 				const format = entry.format || 'single-elimination';
 				const seedingMode = entry.seedingMode || 'random';
 				const createdAt = new Date().toISOString();

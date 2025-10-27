@@ -16,10 +16,11 @@
 ## Current Functionality Snapshot
 - Basic SvelteKit scaffold with Cloudflare adapter.
 - Basic auth guard for `/admin` routes via `src/hooks.server.ts`.
-- **Database Layer**: Dual-mode persistence system
-  - **Production**: Cloudflare D1 (SQLite) for persistent storage
-  - **Development/Testing**: In-memory storage (controlled by `USE_MEMORY_STORE` env var)
-  - Database abstraction layer in `$lib/server/db.ts` provides unified interface
+- **Database Layer**: Dual-mode persistence system with automatic fallback
+  - **Default**: In-memory storage (when `USE_MEMORY_STORE` is unset or D1 is unavailable)
+  - **Production**: Cloudflare D1 (SQLite) for persistent storage (when D1 binding is available)
+  - **Testing**: In-memory storage (explicitly set via `USE_MEMORY_STORE=true`)
+  - Database abstraction layer in `$lib/server/db.ts` provides unified interface with automatic fallback
 - Player repository with D1 backend (`$lib/server/repositories/players-d1.ts`) and in-memory fallback
 - Tournament repository with D1 backend (`$lib/server/repositories/tournaments-d1.ts`) and in-memory fallback
 - `/admin/events/[eventId]/entries/players` supports:
@@ -37,8 +38,14 @@
 
 ## D1 Database Setup
 
+### Environment Variable Behavior
+The application automatically selects the appropriate storage backend:
+- **Default (no configuration)**: Uses in-memory storage for local development
+- **With D1 binding**: Automatically uses D1 when deployed to Cloudflare Pages/Functions
+- **Explicit override**: Set `USE_MEMORY_STORE=true` to force in-memory storage (useful for testing)
+
 ### Local Development
-For local development, the application uses in-memory storage by default. To test with D1 locally:
+For local development, the application uses in-memory storage by default (no setup required). To test with D1 locally:
 
 1. Create a local D1 database:
    ```bash
@@ -92,6 +99,10 @@ The D1 schema includes tables for:
 - `audit_logs`: Action audit trail
 
 See `web/migrations/0001_initial_schema.sql` for complete schema definition.
+
+### Implementation Notes
+- **UUID Generation**: D1 repositories use `crypto.randomUUID()` (Cloudflare Workers compatible) instead of `node:crypto`
+- **Automatic Fallback**: The system gracefully falls back to in-memory storage if D1 is unavailable, ensuring local development works without configuration
 
 ## Outstanding Work Items
 1. **D1データベースの本番環境セットアップ**

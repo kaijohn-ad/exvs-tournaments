@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import type { PlayerData, PlayerImportData, PlayerRecord } from './players';
 
 export const createPlayersRepositoryD1 = (db: D1Database) => {
@@ -13,7 +12,7 @@ export const createPlayersRepositoryD1 = (db: D1Database) => {
 		},
 
 		async createPlayer(eventId: string, data: PlayerData): Promise<PlayerRecord> {
-			const id = randomUUID();
+			const id = crypto.randomUUID();
 			const name = data.name.trim();
 			const note = data.note?.trim() || null;
 
@@ -85,7 +84,7 @@ export const createPlayersRepositoryD1 = (db: D1Database) => {
 					continue;
 				}
 
-				const id = entry.id?.trim() || randomUUID();
+				const id = entry.id?.trim() || crypto.randomUUID();
 				const note = entry.note?.trim() || null;
 
 				await db

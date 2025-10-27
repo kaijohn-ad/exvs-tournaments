@@ -4,7 +4,7 @@ import * as tournamentsMemory from './repositories/tournaments';
 import { createPlayersRepositoryD1 } from './repositories/players-d1';
 import { createTournamentsRepositoryD1 } from './repositories/tournaments-d1';
 
-const USE_MEMORY = process.env.USE_MEMORY_STORE === 'true';
+const USE_MEMORY = process.env.USE_MEMORY_STORE === 'true' || process.env.USE_MEMORY_STORE === undefined;
 
 export interface DatabaseContext {
 	players: {
@@ -77,7 +77,10 @@ export function getDatabase(event: RequestEvent): DatabaseContext {
 
 	const db = event.platform?.env?.DB;
 	if (!db) {
-		throw new Error('D1 database not available');
+		return {
+			players: wrapMemoryPlayers(),
+			tournaments: wrapMemoryTournaments()
+		};
 	}
 
 	return {

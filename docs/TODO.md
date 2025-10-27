@@ -1,6 +1,6 @@
 # Boost Bracket TODO一覧
 
-最終更新: 2025-10-27 03:35 (UTC)
+最終更新: 2025-10-27 05:45 (UTC)
 
 ## ✅ 完了済み
 - [x] SvelteKit プロジェクト初期化と Cloudflare アダプタ設定
@@ -24,6 +24,9 @@
   - SvelteKitサーバーハンドラのD1対応
   - 全テスト通過確認（27 tests passed）
   - wrangler.toml設定追加
+  - デフォルト動作の改善（USE_MEMORY_STORE未設定時もメモリ実装へフォールバック）
+  - Workers互換のcrypto.randomUUID()への置き換え（node:crypto削除）
+  - ローカル開発での設定不要化（D1未設定でも動作）
 
 ## 📝 着手予定
 - [ ] D1データベースの本番環境セットアップ（wrangler d1 create実行）
