@@ -24,6 +24,7 @@
 				<button type="submit" class="primary">プレイヤー管理へ</button>
 				<button type="button" class="secondary" on:click={handlePairsClick}>ペア管理へ</button>
 				<button type="button" class="secondary" on:click={handleTeamsClick}>チーム管理へ</button>
+				<button type="button" class="secondary" on:click={handleTeamBattlesClick}>団体戦管理へ</button>
 				<button type="button" class="secondary" on:click={handleMatchesClick}>試合ログへ</button>
 				<button type="button" class="secondary" on:click={handleStatsClick}>統計表示へ</button>
 				<button type="button" class="secondary" on:click={handleTournamentClick}>トーナメント設定へ</button>
@@ -74,6 +75,12 @@
 		void goto(`/admin/events/${trimmed}/entries/teams`);
 	};
 
+	const goToTeamBattles = (id: string) => {
+		const trimmed = id.trim();
+		if (!trimmed) return;
+		void goto(`/admin/events/${trimmed}/team-battles`);
+	};
+
 	const goToMatches = (id: string) => {
 		const trimmed = id.trim();
 		if (!trimmed) return;
@@ -103,6 +110,10 @@
 
 	const handleTeamsClick = () => {
 		goToTeams(eventId);
+	};
+
+	const handleTeamBattlesClick = () => {
+		goToTeamBattles(eventId);
 	};
 
 	const handleMatchesClick = () => {
