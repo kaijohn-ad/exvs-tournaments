@@ -146,14 +146,14 @@
 
 							<label>
 								<span>形式</span>
-								<select name="format" value={tournament.format}>
+								<select name="format" bind:value={tournament.format}>
 									<option value="single-elimination">シングルエリミネーション</option>
 								</select>
 							</label>
 
 							<label>
 								<span>シード方式</span>
-								<select name="seedingMode" value={tournament.seedingMode}>
+								<select name="seedingMode" bind:value={tournament.seedingMode}>
 									<option value="random">ランダム</option>
 									<option value="manual">手動</option>
 								</select>

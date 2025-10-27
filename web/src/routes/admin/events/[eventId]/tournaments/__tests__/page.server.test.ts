@@ -152,6 +152,13 @@ describe('admin tournaments page actions', () => {
 		expect(status).toBe(400);
 	});
 
+	it('create action trims whitespace-only names', async () => {
+		const response = await actions.create!(createRequestEvent('create', { name: '   ' }));
+		const status = (response as { status?: number } | undefined)?.status;
+		expect(status).toBe(400);
+		expect(listTournaments(EVENT_ID)).toHaveLength(0);
+	});
+
 	it('update action fails without tournamentId', async () => {
 		const response = await actions.update!(createRequestEvent('update', { name: 'Test' }));
 		const status = (response as { status?: number } | undefined)?.status;
@@ -162,5 +169,25 @@ describe('admin tournaments page actions', () => {
 		const response = await actions.delete!(createRequestEvent('delete', {}));
 		const status = (response as { status?: number } | undefined)?.status;
 		expect(status).toBe(400);
+	});
+
+	it('import action skips invalid entries', async () => {
+		const response = await actions.import!(
+			createRequestEvent('import', {
+				payload: JSON.stringify([
+					{ name: 'Valid Tournament', seedingMode: 'manual' },
+					{ name: '   ' },
+					{ id: 'invalid', format: 'single-elimination' },
+					'not-an-object'
+				])
+			})
+		);
+
+		expect((response as { success?: boolean } | undefined)?.success).toBe(true);
+		expect(listTournaments(EVENT_ID)).toHaveLength(1);
+		expect(listTournaments(EVENT_ID)[0]).toMatchObject({
+			name: 'Valid Tournament',
+			seedingMode: 'manual'
+		});
 	});
 });
