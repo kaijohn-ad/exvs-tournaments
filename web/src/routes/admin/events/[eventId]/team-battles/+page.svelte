@@ -17,7 +17,7 @@
 			flashTimer = null;
 		}, 4000);
 		
-		if (form.success && form.source !== 'delete') {
+		if (form.success) {
 			void invalidate(`team-battles:${data.eventId}`);
 		}
 	}
