@@ -1,13 +1,7 @@
 import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import {
-	createTournament,
-	deleteTournament,
-	listTournaments,
-	setTournaments,
-	updateTournament,
-	type TournamentRecord
-} from '$lib/server/repositories/tournaments';
+import { getDatabase } from '$lib/server/db';
+import type { TournamentRecord } from '$lib/server/repositories/tournaments';
 
 const normalizeText = (value: FormDataEntryValue | null): string | undefined => {
 	if (value == null) {
@@ -19,21 +13,17 @@ const normalizeText = (value: FormDataEntryValue | null): string | undefined => 
 	return text.length > 0 ? text : undefined;
 };
 
-const getTournaments = (eventId: string): TournamentRecord[] =>
-	[...listTournaments(eventId)].sort((a, b) => a.name.localeCompare(b.name, 'ja'));
-
-const serializeTournaments = (eventId: string): string =>
-	JSON.stringify(getTournaments(eventId), null, 2);
-
 export const load: PageServerLoad = async (event) => {
 	event.depends(`tournaments:${event.params.eventId}`);
 
-	const tournaments = getTournaments(event.params.eventId);
+	const db = getDatabase(event);
+	const tournaments = await db.tournaments.listTournaments(event.params.eventId);
+	const sortedTournaments = [...tournaments].sort((a, b) => a.name.localeCompare(b.name, 'ja'));
 
 	return {
 		eventId: event.params.eventId,
-		tournaments,
-		tournamentsJson: JSON.stringify(tournaments, null, 2)
+		tournaments: sortedTournaments,
+		tournamentsJson: JSON.stringify(sortedTournaments, null, 2)
 	};
 };
 
@@ -48,9 +38,11 @@ export const actions: Actions = {
 			return fail(400, { type: 'error', source: 'create', message: 'トーナメント名は必須です。' });
 		}
 
-		const tournament = createTournament(event.params.eventId, { name, format, seedingMode });
-		const tournaments = getTournaments(event.params.eventId);
-		const tournamentsJson = JSON.stringify(tournaments, null, 2);
+		const db = getDatabase(event);
+		const tournament = await db.tournaments.createTournament(event.params.eventId, { name, format, seedingMode });
+		const tournaments = await db.tournaments.listTournaments(event.params.eventId);
+		const sortedTournaments = [...tournaments].sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+		const tournamentsJson = JSON.stringify(sortedTournaments, null, 2);
 
 		return {
 			success: true,
@@ -58,7 +50,7 @@ export const actions: Actions = {
 			source: 'create',
 			message: `トーナメント「${tournament.name}」を作成しました。`,
 			tournament,
-			tournaments,
+			tournaments: sortedTournaments,
 			tournamentsJson
 		};
 	},
@@ -78,9 +70,11 @@ export const actions: Actions = {
 		}
 
 		try {
-			const tournament = updateTournament(event.params.eventId, tournamentId, { name, format, seedingMode });
-			const tournaments = getTournaments(event.params.eventId);
-			const tournamentsJson = JSON.stringify(tournaments, null, 2);
+			const db = getDatabase(event);
+			const tournament = await db.tournaments.updateTournament(event.params.eventId, tournamentId, { name, format, seedingMode });
+			const tournaments = await db.tournaments.listTournaments(event.params.eventId);
+			const sortedTournaments = [...tournaments].sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+			const tournamentsJson = JSON.stringify(sortedTournaments, null, 2);
 
 			return {
 				success: true,
@@ -88,7 +82,7 @@ export const actions: Actions = {
 				source: 'update',
 				message: `トーナメント「${tournament.name}」を更新しました。`,
 				tournament,
-				tournaments,
+				tournaments: sortedTournaments,
 				tournamentsJson
 			};
 		} catch (error) {
@@ -105,20 +99,23 @@ export const actions: Actions = {
 		}
 
 		try {
-			deleteTournament(event.params.eventId, tournamentId);
+			const db = getDatabase(event);
+			await db.tournaments.deleteTournament(event.params.eventId, tournamentId);
 		} catch (error) {
 			return fail(404, { type: 'error', source: 'delete', message: '指定したトーナメントが見つかりません。' });
 		}
 
-		const tournaments = getTournaments(event.params.eventId);
-		const tournamentsJson = JSON.stringify(tournaments, null, 2);
+		const db = getDatabase(event);
+		const tournaments = await db.tournaments.listTournaments(event.params.eventId);
+		const sortedTournaments = [...tournaments].sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+		const tournamentsJson = JSON.stringify(sortedTournaments, null, 2);
 
 		return {
 			success: true,
 			type: 'success',
 			source: 'delete',
 			message: 'トーナメントを削除しました。',
-			tournaments,
+			tournaments: sortedTournaments,
 			tournamentsJson
 		};
 	},
@@ -179,7 +176,8 @@ export const actions: Actions = {
 			})
 			.filter(Boolean);
 
-		const imported = setTournaments(event.params.eventId, sanitized as Parameters<typeof setTournaments>[1]);
+		const db = getDatabase(event);
+		const imported = await db.tournaments.setTournaments(event.params.eventId, sanitized as any);
 		const tournamentsJson = JSON.stringify(imported, null, 2);
 		const message =
 			mode === 'editor'

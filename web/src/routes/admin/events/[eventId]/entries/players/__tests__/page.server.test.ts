@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { resetForTests } from '$lib/server/db';
 import {
-	__resetForTests,
 	createPlayer,
 	listPlayers,
 	type PlayerRecord
@@ -45,7 +45,7 @@ const createRequestEvent = <T extends keyof typeof actions>(
 
 describe('admin players page actions', () => {
 	beforeEach(() => {
-		__resetForTests();
+		resetForTests();
 	});
 
 	it('load returns players sorted by name', async () => {
