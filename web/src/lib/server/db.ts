@@ -4,6 +4,7 @@ import * as tournamentsMemory from './repositories/tournaments';
 import * as pairsMemory from './repositories/pairs';
 import * as teamsMemory from './repositories/teams';
 import * as teamBattlesMemory from './repositories/team-battles';
+import * as teamBattleSlotsMemory from './repositories/team-battle-slots';
 import * as matchesMemory from './repositories/matches';
 import * as playerStatsMemory from './repositories/player-stats';
 import { createPlayersRepositoryD1 } from './repositories/players-d1';
@@ -11,6 +12,7 @@ import { createTournamentsRepositoryD1 } from './repositories/tournaments-d1';
 import { createPairsRepositoryD1 } from './repositories/pairs-d1';
 import { createTeamsRepositoryD1 } from './repositories/teams-d1';
 import { createTeamBattlesRepositoryD1 } from './repositories/team-battles-d1';
+import { createTeamBattleSlotsRepositoryD1 } from './repositories/team-battle-slots-d1';
 import { createMatchesRepositoryD1 } from './repositories/matches-d1';
 import { createPlayerStatsRepositoryD1 } from './repositories/player-stats-d1';
 
@@ -74,6 +76,16 @@ export interface DatabaseContext {
 		incrementPlayerStats(playerId: string, scope: string, scopeId: string | undefined, won: boolean): Promise<playerStatsMemory.PlayerStatsRecord>;
 		deletePlayerStats(statsId: string): Promise<void>;
 		setPlayerStats(stats: playerStatsMemory.PlayerStatsImportData[]): Promise<playerStatsMemory.PlayerStatsRecord[]>;
+	};
+	teamBattleSlots: {
+		listTeamBattleSlots(battleId: string): Promise<teamBattleSlotsMemory.TeamBattleSlotRecord[]>;
+		listTeamBattleSlotsByTeam(battleId: string, teamId: string): Promise<teamBattleSlotsMemory.TeamBattleSlotRecord[]>;
+		createTeamBattleSlot(data: teamBattleSlotsMemory.TeamBattleSlotData): Promise<teamBattleSlotsMemory.TeamBattleSlotRecord>;
+		ensureTeamBattleSlot(battleId: string, slotId: string): Promise<teamBattleSlotsMemory.TeamBattleSlotRecord>;
+		updateTeamBattleSlot(battleId: string, slotId: string, data: teamBattleSlotsMemory.TeamBattleSlotData): Promise<teamBattleSlotsMemory.TeamBattleSlotRecord>;
+		deleteTeamBattleSlot(battleId: string, slotId: string): Promise<void>;
+		deleteTeamBattleSlotsByBattle(battleId: string): Promise<void>;
+		setTeamBattleSlots(battleId: string, slots: teamBattleSlotsMemory.TeamBattleSlotImportData[]): Promise<teamBattleSlotsMemory.TeamBattleSlotRecord[]>;
 	};
 }
 
@@ -230,6 +242,33 @@ const wrapMemoryPlayerStats = () => ({
 	}
 });
 
+const wrapMemoryTeamBattleSlots = () => ({
+	async listTeamBattleSlots(battleId: string) {
+		return teamBattleSlotsMemory.listTeamBattleSlots(battleId);
+	},
+	async listTeamBattleSlotsByTeam(battleId: string, teamId: string) {
+		return teamBattleSlotsMemory.listTeamBattleSlotsByTeam(battleId, teamId);
+	},
+	async createTeamBattleSlot(data: teamBattleSlotsMemory.TeamBattleSlotData) {
+		return teamBattleSlotsMemory.createTeamBattleSlot(data);
+	},
+	async ensureTeamBattleSlot(battleId: string, slotId: string) {
+		return teamBattleSlotsMemory.ensureTeamBattleSlot(battleId, slotId);
+	},
+	async updateTeamBattleSlot(battleId: string, slotId: string, data: teamBattleSlotsMemory.TeamBattleSlotData) {
+		return teamBattleSlotsMemory.updateTeamBattleSlot(battleId, slotId, data);
+	},
+	async deleteTeamBattleSlot(battleId: string, slotId: string) {
+		return teamBattleSlotsMemory.deleteTeamBattleSlot(battleId, slotId);
+	},
+	async deleteTeamBattleSlotsByBattle(battleId: string) {
+		return teamBattleSlotsMemory.deleteTeamBattleSlotsByBattle(battleId);
+	},
+	async setTeamBattleSlots(battleId: string, slots: teamBattleSlotsMemory.TeamBattleSlotImportData[]) {
+		return teamBattleSlotsMemory.setTeamBattleSlots(battleId, slots);
+	}
+});
+
 export function getDatabase(event: RequestEvent): DatabaseContext {
 	if (USE_MEMORY) {
 		return {
@@ -238,6 +277,7 @@ export function getDatabase(event: RequestEvent): DatabaseContext {
 			pairs: wrapMemoryPairs(),
 			teams: wrapMemoryTeams(),
 			teamBattles: wrapMemoryTeamBattles(),
+			teamBattleSlots: wrapMemoryTeamBattleSlots(),
 			matches: wrapMemoryMatches(),
 			playerStats: wrapMemoryPlayerStats()
 		};
@@ -251,6 +291,7 @@ export function getDatabase(event: RequestEvent): DatabaseContext {
 			pairs: wrapMemoryPairs(),
 			teams: wrapMemoryTeams(),
 			teamBattles: wrapMemoryTeamBattles(),
+			teamBattleSlots: wrapMemoryTeamBattleSlots(),
 			matches: wrapMemoryMatches(),
 			playerStats: wrapMemoryPlayerStats()
 		};
@@ -262,6 +303,7 @@ export function getDatabase(event: RequestEvent): DatabaseContext {
 		pairs: createPairsRepositoryD1(db),
 		teams: createTeamsRepositoryD1(db),
 		teamBattles: createTeamBattlesRepositoryD1(db),
+		teamBattleSlots: createTeamBattleSlotsRepositoryD1(db),
 		matches: createMatchesRepositoryD1(db),
 		playerStats: createPlayerStatsRepositoryD1(db)
 	};
@@ -274,6 +316,7 @@ export function resetForTests() {
 		pairsMemory.__resetForTests();
 		teamsMemory.__resetForTests();
 		teamBattlesMemory.__resetForTests();
+		teamBattleSlotsMemory.__resetForTests();
 		matchesMemory.__resetForTests();
 		playerStatsMemory.__resetForTests();
 	}
