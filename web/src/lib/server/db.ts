@@ -2,9 +2,11 @@ import type { RequestEvent } from '@sveltejs/kit';
 import * as playersMemory from './repositories/players';
 import * as tournamentsMemory from './repositories/tournaments';
 import * as pairsMemory from './repositories/pairs';
+import * as teamsMemory from './repositories/teams';
 import { createPlayersRepositoryD1 } from './repositories/players-d1';
 import { createTournamentsRepositoryD1 } from './repositories/tournaments-d1';
 import { createPairsRepositoryD1 } from './repositories/pairs-d1';
+import { createTeamsRepositoryD1 } from './repositories/teams-d1';
 
 const USE_MEMORY = process.env.USE_MEMORY_STORE === 'true' || process.env.USE_MEMORY_STORE === undefined;
 
@@ -32,6 +34,14 @@ export interface DatabaseContext {
 		updatePair(eventId: string, pairId: string, data: pairsMemory.PairData): Promise<pairsMemory.PairRecord>;
 		deletePair(eventId: string, pairId: string): Promise<void>;
 		setPairs(eventId: string, pairs: pairsMemory.PairImportData[]): Promise<pairsMemory.PairRecord[]>;
+	};
+	teams: {
+		listTeams(eventId: string): Promise<teamsMemory.TeamRecord[]>;
+		createTeam(eventId: string, data: teamsMemory.TeamData): Promise<teamsMemory.TeamRecord>;
+		ensureTeam(eventId: string, teamId: string): Promise<teamsMemory.TeamRecord>;
+		updateTeam(eventId: string, teamId: string, data: teamsMemory.TeamData): Promise<teamsMemory.TeamRecord>;
+		deleteTeam(eventId: string, teamId: string): Promise<void>;
+		setTeams(eventId: string, teams: teamsMemory.TeamImportData[]): Promise<teamsMemory.TeamRecord[]>;
 	};
 }
 
@@ -98,12 +108,34 @@ const wrapMemoryPairs = () => ({
 	}
 });
 
+const wrapMemoryTeams = () => ({
+	async listTeams(eventId: string) {
+		return teamsMemory.listTeams(eventId);
+	},
+	async createTeam(eventId: string, data: teamsMemory.TeamData) {
+		return teamsMemory.createTeam(eventId, data);
+	},
+	async ensureTeam(eventId: string, teamId: string) {
+		return teamsMemory.ensureTeam(eventId, teamId);
+	},
+	async updateTeam(eventId: string, teamId: string, data: teamsMemory.TeamData) {
+		return teamsMemory.updateTeam(eventId, teamId, data);
+	},
+	async deleteTeam(eventId: string, teamId: string) {
+		return teamsMemory.deleteTeam(eventId, teamId);
+	},
+	async setTeams(eventId: string, teams: teamsMemory.TeamImportData[]) {
+		return teamsMemory.setTeams(eventId, teams);
+	}
+});
+
 export function getDatabase(event: RequestEvent): DatabaseContext {
 	if (USE_MEMORY) {
 		return {
 			players: wrapMemoryPlayers(),
 			tournaments: wrapMemoryTournaments(),
-			pairs: wrapMemoryPairs()
+			pairs: wrapMemoryPairs(),
+			teams: wrapMemoryTeams()
 		};
 	}
 
@@ -112,14 +144,16 @@ export function getDatabase(event: RequestEvent): DatabaseContext {
 		return {
 			players: wrapMemoryPlayers(),
 			tournaments: wrapMemoryTournaments(),
-			pairs: wrapMemoryPairs()
+			pairs: wrapMemoryPairs(),
+			teams: wrapMemoryTeams()
 		};
 	}
 
 	return {
 		players: createPlayersRepositoryD1(db),
 		tournaments: createTournamentsRepositoryD1(db),
-		pairs: createPairsRepositoryD1(db)
+		pairs: createPairsRepositoryD1(db),
+		teams: createTeamsRepositoryD1(db)
 	};
 }
 
@@ -128,5 +162,6 @@ export function resetForTests() {
 		playersMemory.__resetForTests();
 		tournamentsMemory.__resetForTests();
 		pairsMemory.__resetForTests();
+		teamsMemory.__resetForTests();
 	}
 }
