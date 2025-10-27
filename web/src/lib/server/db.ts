@@ -4,11 +4,15 @@ import * as tournamentsMemory from './repositories/tournaments';
 import * as pairsMemory from './repositories/pairs';
 import * as teamsMemory from './repositories/teams';
 import * as teamBattlesMemory from './repositories/team-battles';
+import * as matchesMemory from './repositories/matches';
+import * as playerStatsMemory from './repositories/player-stats';
 import { createPlayersRepositoryD1 } from './repositories/players-d1';
 import { createTournamentsRepositoryD1 } from './repositories/tournaments-d1';
 import { createPairsRepositoryD1 } from './repositories/pairs-d1';
 import { createTeamsRepositoryD1 } from './repositories/teams-d1';
 import { createTeamBattlesRepositoryD1 } from './repositories/team-battles-d1';
+import { createMatchesRepositoryD1 } from './repositories/matches-d1';
+import { createPlayerStatsRepositoryD1 } from './repositories/player-stats-d1';
 
 const USE_MEMORY = process.env.USE_MEMORY_STORE === 'true' || process.env.USE_MEMORY_STORE === undefined;
 
@@ -52,6 +56,24 @@ export interface DatabaseContext {
 		updateTeamBattle(eventId: string, battleId: string, data: teamBattlesMemory.TeamBattleData): Promise<teamBattlesMemory.TeamBattleRecord>;
 		deleteTeamBattle(eventId: string, battleId: string): Promise<void>;
 		setTeamBattles(eventId: string, battles: teamBattlesMemory.TeamBattleImportData[]): Promise<teamBattlesMemory.TeamBattleRecord[]>;
+	};
+	matches: {
+		listMatches(contextType?: string, contextId?: string): Promise<matchesMemory.MatchRecord[]>;
+		createMatch(data: matchesMemory.MatchData): Promise<matchesMemory.MatchRecord>;
+		ensureMatch(matchId: string): Promise<matchesMemory.MatchRecord>;
+		updateMatch(matchId: string, data: matchesMemory.MatchData): Promise<matchesMemory.MatchRecord>;
+		deleteMatch(matchId: string): Promise<void>;
+		setMatches(matches: matchesMemory.MatchImportData[]): Promise<matchesMemory.MatchRecord[]>;
+	};
+	playerStats: {
+		listPlayerStats(scope?: string, scopeId?: string): Promise<playerStatsMemory.PlayerStatsRecord[]>;
+		getPlayerStats(playerId: string, scope: string, scopeId?: string): Promise<playerStatsMemory.PlayerStatsRecord | null>;
+		createPlayerStats(data: playerStatsMemory.PlayerStatsData): Promise<playerStatsMemory.PlayerStatsRecord>;
+		ensurePlayerStats(statsId: string): Promise<playerStatsMemory.PlayerStatsRecord>;
+		updatePlayerStats(statsId: string, data: playerStatsMemory.PlayerStatsData): Promise<playerStatsMemory.PlayerStatsRecord>;
+		incrementPlayerStats(playerId: string, scope: string, scopeId: string | undefined, won: boolean): Promise<playerStatsMemory.PlayerStatsRecord>;
+		deletePlayerStats(statsId: string): Promise<void>;
+		setPlayerStats(stats: playerStatsMemory.PlayerStatsImportData[]): Promise<playerStatsMemory.PlayerStatsRecord[]>;
 	};
 }
 
@@ -160,6 +182,54 @@ const wrapMemoryTeamBattles = () => ({
 	}
 });
 
+const wrapMemoryMatches = () => ({
+	async listMatches(contextType?: string, contextId?: string) {
+		return matchesMemory.listMatches(contextType, contextId);
+	},
+	async createMatch(data: matchesMemory.MatchData) {
+		return matchesMemory.createMatch(data);
+	},
+	async ensureMatch(matchId: string) {
+		return matchesMemory.ensureMatch(matchId);
+	},
+	async updateMatch(matchId: string, data: matchesMemory.MatchData) {
+		return matchesMemory.updateMatch(matchId, data);
+	},
+	async deleteMatch(matchId: string) {
+		return matchesMemory.deleteMatch(matchId);
+	},
+	async setMatches(matches: matchesMemory.MatchImportData[]) {
+		return matchesMemory.setMatches(matches);
+	}
+});
+
+const wrapMemoryPlayerStats = () => ({
+	async listPlayerStats(scope?: string, scopeId?: string) {
+		return playerStatsMemory.listPlayerStats(scope, scopeId);
+	},
+	async getPlayerStats(playerId: string, scope: string, scopeId?: string) {
+		return playerStatsMemory.getPlayerStats(playerId, scope, scopeId);
+	},
+	async createPlayerStats(data: playerStatsMemory.PlayerStatsData) {
+		return playerStatsMemory.createPlayerStats(data);
+	},
+	async ensurePlayerStats(statsId: string) {
+		return playerStatsMemory.ensurePlayerStats(statsId);
+	},
+	async updatePlayerStats(statsId: string, data: playerStatsMemory.PlayerStatsData) {
+		return playerStatsMemory.updatePlayerStats(statsId, data);
+	},
+	async incrementPlayerStats(playerId: string, scope: string, scopeId: string | undefined, won: boolean) {
+		return playerStatsMemory.incrementPlayerStats(playerId, scope, scopeId, won);
+	},
+	async deletePlayerStats(statsId: string) {
+		return playerStatsMemory.deletePlayerStats(statsId);
+	},
+	async setPlayerStats(stats: playerStatsMemory.PlayerStatsImportData[]) {
+		return playerStatsMemory.setPlayerStats(stats);
+	}
+});
+
 export function getDatabase(event: RequestEvent): DatabaseContext {
 	if (USE_MEMORY) {
 		return {
@@ -167,7 +237,9 @@ export function getDatabase(event: RequestEvent): DatabaseContext {
 			tournaments: wrapMemoryTournaments(),
 			pairs: wrapMemoryPairs(),
 			teams: wrapMemoryTeams(),
-			teamBattles: wrapMemoryTeamBattles()
+			teamBattles: wrapMemoryTeamBattles(),
+			matches: wrapMemoryMatches(),
+			playerStats: wrapMemoryPlayerStats()
 		};
 	}
 
@@ -178,7 +250,9 @@ export function getDatabase(event: RequestEvent): DatabaseContext {
 			tournaments: wrapMemoryTournaments(),
 			pairs: wrapMemoryPairs(),
 			teams: wrapMemoryTeams(),
-			teamBattles: wrapMemoryTeamBattles()
+			teamBattles: wrapMemoryTeamBattles(),
+			matches: wrapMemoryMatches(),
+			playerStats: wrapMemoryPlayerStats()
 		};
 	}
 
@@ -187,7 +261,9 @@ export function getDatabase(event: RequestEvent): DatabaseContext {
 		tournaments: createTournamentsRepositoryD1(db),
 		pairs: createPairsRepositoryD1(db),
 		teams: createTeamsRepositoryD1(db),
-		teamBattles: createTeamBattlesRepositoryD1(db)
+		teamBattles: createTeamBattlesRepositoryD1(db),
+		matches: createMatchesRepositoryD1(db),
+		playerStats: createPlayerStatsRepositoryD1(db)
 	};
 }
 
@@ -198,5 +274,7 @@ export function resetForTests() {
 		pairsMemory.__resetForTests();
 		teamsMemory.__resetForTests();
 		teamBattlesMemory.__resetForTests();
+		matchesMemory.__resetForTests();
+		playerStatsMemory.__resetForTests();
 	}
 }
