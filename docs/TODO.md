@@ -43,9 +43,37 @@
   - `src/routes/admin/events/[eventId]/entries/pairs/`: 完全なCRUD UI
   - JSON インポート/エクスポート、JSONエディタ機能実装
   - 管理トップからの導線追加
+- [x] チーム管理の CRUD + JSON 入出力
+  - `src/lib/server/repositories/teams.ts`: メモリ実装
+  - `src/lib/server/repositories/teams-d1.ts`: D1実装
+  - `src/routes/admin/events/[eventId]/entries/teams/`: 完全なCRUD UI
+  - JSON インポート/エクスポート、JSONエディタ機能実装
+  - 管理トップからの導線追加
+- [x] 団体戦リポジトリの実装
+  - `src/lib/server/repositories/team-battles.ts`: メモリ実装
+  - `src/lib/server/repositories/team-battles-d1.ts`: D1実装
+  - データベースコンテキストへの統合完了
+- [x] 試合ログリポジトリの実装
+  - `src/lib/server/repositories/matches.ts`: メモリ実装
+  - `src/lib/server/repositories/matches-d1.ts`: D1実装
+  - データベースコンテキストへの統合完了
+- [x] プレイヤー統計リポジトリの実装
+  - `src/lib/server/repositories/player-stats.ts`: メモリ実装
+  - `src/lib/server/repositories/player-stats-d1.ts`: D1実装
+  - データベースコンテキストへの統合完了
+- [x] 公開ビュー（観覧用）の基本ルーティング
+  - `/view/[slug]` ルーティング作成
+  - 基本的なUI実装（プレースホルダー）
 
 ## 🚧 進行中
-なし
+- [ ] 団体戦（早稲田式）の UI 実装
+  - リポジトリは完成、UI作成が必要
+- [ ] 試合ログ UI の実装
+  - リポジトリは完成、UI作成が必要
+- [ ] プレイヤー統計ビュー UI の実装
+  - リポジトリは完成、UI作成が必要
+- [ ] 公開ビューの機能拡張
+  - トーナメントブラケット表示の実装が必要
 
 ## 📝 着手予定
 - [ ] D1データベースの本番環境セットアップ（`wrangler d1 create` 実行）
@@ -54,12 +82,9 @@
 - [ ] Cloudflare Pages 環境変数の設定
   - `BASIC_AUTH_USER` と `BASIC_AUTH_PASS` の設定
   - GitHub Secrets の設定（`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`）
-- [ ] プレイヤー/トーナメント/ペア以外のエンティティ設計と UI/UX 実装
-  - [ ] 団体戦（早稲田式）の設定・ラインナップ管理
-  - [ ] 試合ログ保存と統計ビューの基本実装
-- [ ] 公開ビュー（観覧用）の設計・実装
-  - [ ] イベント slug を用いた公開ルーティング
-  - [ ] トーナメント進行状況の閲覧 UI
+- [ ] ブラケット管理機能の実装
+  - [ ] トーナメントブラケットの生成・表示
+  - [ ] 試合結果の入力と進行管理
 
 ---
 更新ルール:
