@@ -22,6 +22,7 @@
 			</label>
 			<div class="button-group">
 				<button type="submit" class="primary">プレイヤー管理へ</button>
+				<button type="button" class="secondary" on:click={handlePairsClick}>ペア管理へ</button>
 				<button type="button" class="secondary" on:click={handleTournamentClick}>トーナメント設定へ</button>
 			</div>
 		</form>
@@ -58,6 +59,12 @@
 		void goto(`/admin/events/${trimmed}/entries/players`);
 	};
 
+	const goToPairs = (id: string) => {
+		const trimmed = id.trim();
+		if (!trimmed) return;
+		void goto(`/admin/events/${trimmed}/entries/pairs`);
+	};
+
 	const goToTournaments = (id: string) => {
 		const trimmed = id.trim();
 		if (!trimmed) return;
@@ -67,6 +74,10 @@
 	const handleSubmit = (event: SubmitEvent) => {
 		event.preventDefault();
 		goToPlayers(eventId);
+	};
+
+	const handlePairsClick = () => {
+		goToPairs(eventId);
 	};
 
 	const handleTournamentClick = () => {

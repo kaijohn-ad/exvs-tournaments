@@ -1,6 +1,6 @@
 # Boost Bracket TODO一覧
 
-最終更新: 2025-10-27 10:20 (UTC)
+最終更新: 2025-10-27 (Devin session update)
 
 ## ✅ 完了済み
 - [x] SvelteKit プロジェクト初期化と Cloudflare アダプタ設定
@@ -28,22 +28,38 @@
   - Workers互換のcrypto.randomUUID()への置き換え（node:crypto削除）
   - ローカル開発での設定不要化（D1未設定でも動作）
 
-## 🚧 進行中
-- [ ] Node.js 20.19 以降への移行徹底
+- [x] Node.js 20.19 以降への移行徹底
   - [.nvmrc](../web/.nvmrc) および `package.json` の `engines` を更新済み
-  - 開発者・CI 環境のバージョン整合を完了する
+  - GitHub Actions CI/CD ワークフローで Node.js バージョン固定
+- [x] CI/CD パイプライン整備（自動テスト、Pages デプロイ）
+  - `.github/workflows/ci.yml`: PR/push時の自動テスト・型チェック
+  - `.github/workflows/deploy.yml`: master へのマージで自動デプロイ
+  - デプロイ前に `npm run check` と `npm run test` を実行
+- [x] デプロイ手順とロールバック方針のドキュメント化
+  - `docs/deployment.md` に本番D1セットアップ、デプロイ、ロールバック手順を記載
+- [x] ペア管理（2人チーム）の CRUD + JSON 入出力
+  - `src/lib/server/repositories/pairs.ts`: メモリ実装
+  - `src/lib/server/repositories/pairs-d1.ts`: D1実装
+  - `src/routes/admin/events/[eventId]/entries/pairs/`: 完全なCRUD UI
+  - JSON インポート/エクスポート、JSONエディタ機能実装
+  - 管理トップからの導線追加
+
+## 🚧 進行中
+なし
 
 ## 📝 着手予定
 - [ ] D1データベースの本番環境セットアップ（`wrangler d1 create` 実行）
-- [ ] Cloudflare Pages/Functionsへのデプロイ設定
-- [ ] プレイヤー/トーナメント以外のエンティティ設計と UI/UX 実装
-  - [ ] ペア管理（2人チーム）の CRUD + JSON 入出力
+  - 手順は `docs/deployment.md` に記載済み
+  - 実際の本番DB作成とマイグレーション適用が必要
+- [ ] Cloudflare Pages 環境変数の設定
+  - `BASIC_AUTH_USER` と `BASIC_AUTH_PASS` の設定
+  - GitHub Secrets の設定（`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`）
+- [ ] プレイヤー/トーナメント/ペア以外のエンティティ設計と UI/UX 実装
   - [ ] 団体戦（早稲田式）の設定・ラインナップ管理
   - [ ] 試合ログ保存と統計ビューの基本実装
 - [ ] 公開ビュー（観覧用）の設計・実装
   - [ ] イベント slug を用いた公開ルーティング
   - [ ] トーナメント進行状況の閲覧 UI
-- [ ] CI/CD パイプライン整備（自動テスト、Pages デプロイ）
 
 ---
 更新ルール:

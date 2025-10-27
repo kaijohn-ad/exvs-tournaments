@@ -1,8 +1,10 @@
 import type { RequestEvent } from '@sveltejs/kit';
 import * as playersMemory from './repositories/players';
 import * as tournamentsMemory from './repositories/tournaments';
+import * as pairsMemory from './repositories/pairs';
 import { createPlayersRepositoryD1 } from './repositories/players-d1';
 import { createTournamentsRepositoryD1 } from './repositories/tournaments-d1';
+import { createPairsRepositoryD1 } from './repositories/pairs-d1';
 
 const USE_MEMORY = process.env.USE_MEMORY_STORE === 'true' || process.env.USE_MEMORY_STORE === undefined;
 
@@ -22,6 +24,14 @@ export interface DatabaseContext {
 		updateTournament(eventId: string, tournamentId: string, data: tournamentsMemory.TournamentData): Promise<tournamentsMemory.TournamentRecord>;
 		deleteTournament(eventId: string, tournamentId: string): Promise<void>;
 		setTournaments(eventId: string, tournaments: tournamentsMemory.TournamentImportData[]): Promise<tournamentsMemory.TournamentRecord[]>;
+	};
+	pairs: {
+		listPairs(eventId: string): Promise<pairsMemory.PairRecord[]>;
+		createPair(eventId: string, data: pairsMemory.PairData): Promise<pairsMemory.PairRecord>;
+		ensurePair(eventId: string, pairId: string): Promise<pairsMemory.PairRecord>;
+		updatePair(eventId: string, pairId: string, data: pairsMemory.PairData): Promise<pairsMemory.PairRecord>;
+		deletePair(eventId: string, pairId: string): Promise<void>;
+		setPairs(eventId: string, pairs: pairsMemory.PairImportData[]): Promise<pairsMemory.PairRecord[]>;
 	};
 }
 
@@ -67,11 +77,33 @@ const wrapMemoryTournaments = () => ({
 	}
 });
 
+const wrapMemoryPairs = () => ({
+	async listPairs(eventId: string) {
+		return pairsMemory.listPairs(eventId);
+	},
+	async createPair(eventId: string, data: pairsMemory.PairData) {
+		return pairsMemory.createPair(eventId, data);
+	},
+	async ensurePair(eventId: string, pairId: string) {
+		return pairsMemory.ensurePair(eventId, pairId);
+	},
+	async updatePair(eventId: string, pairId: string, data: pairsMemory.PairData) {
+		return pairsMemory.updatePair(eventId, pairId, data);
+	},
+	async deletePair(eventId: string, pairId: string) {
+		return pairsMemory.deletePair(eventId, pairId);
+	},
+	async setPairs(eventId: string, pairs: pairsMemory.PairImportData[]) {
+		return pairsMemory.setPairs(eventId, pairs);
+	}
+});
+
 export function getDatabase(event: RequestEvent): DatabaseContext {
 	if (USE_MEMORY) {
 		return {
 			players: wrapMemoryPlayers(),
-			tournaments: wrapMemoryTournaments()
+			tournaments: wrapMemoryTournaments(),
+			pairs: wrapMemoryPairs()
 		};
 	}
 
@@ -79,13 +111,15 @@ export function getDatabase(event: RequestEvent): DatabaseContext {
 	if (!db) {
 		return {
 			players: wrapMemoryPlayers(),
-			tournaments: wrapMemoryTournaments()
+			tournaments: wrapMemoryTournaments(),
+			pairs: wrapMemoryPairs()
 		};
 	}
 
 	return {
 		players: createPlayersRepositoryD1(db),
-		tournaments: createTournamentsRepositoryD1(db)
+		tournaments: createTournamentsRepositoryD1(db),
+		pairs: createPairsRepositoryD1(db)
 	};
 }
 
@@ -93,5 +127,6 @@ export function resetForTests() {
 	if (USE_MEMORY) {
 		playersMemory.__resetForTests();
 		tournamentsMemory.__resetForTests();
+		pairsMemory.__resetForTests();
 	}
 }
