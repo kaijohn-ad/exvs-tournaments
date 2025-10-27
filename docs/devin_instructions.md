@@ -21,16 +21,15 @@
   - Create/Update/Delete players
   - JSON import/export + inline JSON editor
   - Success/error flash messages
+- `/admin/events/[eventId]/tournaments` provides tournament management:
+  - Create/Update/Delete tournaments
+  - JSON import/export + inline editor
+  - Defaults for single-elimination format and seeding options
 - `/admin/+page` provides event ID navigation into player management.
 - Documentation (`docs/`) outlines requirements, data model, design notes, and TODO list.
 
 ## Outstanding Work Items
-1. **トーナメント設定ページのスケルトン作成**
-   - Add admin route(s) for tournament setup under `web/src/routes/admin/events/[eventId]/tournaments`
-   - Provide form placeholders aligning with requirements (single elimination, pair assignments, etc.)
-   - Ensure navigation from `/admin` to the new page
-   - Include minimal server-side structure and tests similar to player page
-2. **Cloudflare D1 への永続化層移行とシークレット設定**
+1. **Cloudflare D1 への永続化層移行とシークレット設定**
    - Replace in-memory player repo with Cloudflare D1-backed persistence
    - Provide migration scripts/schema definition (SQL)
    - Update configuration (`wrangler.toml` / env) and adapt tests (mock D1 or toggle test mode)
