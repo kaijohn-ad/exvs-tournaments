@@ -1,4 +1,5 @@
 import type { RequestEvent } from '@sveltejs/kit';
+import * as eventsMemory from './repositories/events';
 import * as playersMemory from './repositories/players';
 import * as tournamentsMemory from './repositories/tournaments';
 import * as pairsMemory from './repositories/pairs';
@@ -7,6 +8,7 @@ import * as teamBattlesMemory from './repositories/team-battles';
 import * as teamBattleSlotsMemory from './repositories/team-battle-slots';
 import * as matchesMemory from './repositories/matches';
 import * as playerStatsMemory from './repositories/player-stats';
+import { createEventsRepositoryD1 } from './repositories/events-d1';
 import { createPlayersRepositoryD1 } from './repositories/players-d1';
 import { createTournamentsRepositoryD1 } from './repositories/tournaments-d1';
 import { createPairsRepositoryD1 } from './repositories/pairs-d1';
@@ -19,6 +21,13 @@ import { createPlayerStatsRepositoryD1 } from './repositories/player-stats-d1';
 const USE_MEMORY = process.env.USE_MEMORY_STORE === 'true' || process.env.USE_MEMORY_STORE === undefined;
 
 export interface DatabaseContext {
+	events: {
+		listEvents(): Promise<eventsMemory.EventRecord[]>;
+		createEvent(data: eventsMemory.EventData): Promise<eventsMemory.EventRecord>;
+		ensureEvent(eventId: string): Promise<eventsMemory.EventRecord>;
+		updateEvent(eventId: string, data: eventsMemory.EventData): Promise<eventsMemory.EventRecord>;
+		deleteEvent(eventId: string): Promise<void>;
+	};
 	players: {
 		listPlayers(eventId: string): Promise<playersMemory.PlayerRecord[]>;
 		createPlayer(eventId: string, data: playersMemory.PlayerData): Promise<playersMemory.PlayerRecord>;
@@ -88,6 +97,24 @@ export interface DatabaseContext {
 		setTeamBattleSlots(battleId: string, slots: teamBattleSlotsMemory.TeamBattleSlotImportData[]): Promise<teamBattleSlotsMemory.TeamBattleSlotRecord[]>;
 	};
 }
+
+const wrapMemoryEvents = () => ({
+	async listEvents() {
+		return eventsMemory.listEvents();
+	},
+	async createEvent(data: eventsMemory.EventData) {
+		return eventsMemory.createEvent(data);
+	},
+	async ensureEvent(eventId: string) {
+		return eventsMemory.ensureEvent(eventId);
+	},
+	async updateEvent(eventId: string, data: eventsMemory.EventData) {
+		return eventsMemory.updateEvent(eventId, data);
+	},
+	async deleteEvent(eventId: string) {
+		return eventsMemory.deleteEvent(eventId);
+	}
+});
 
 const wrapMemoryPlayers = () => ({
 	async listPlayers(eventId: string) {
@@ -272,6 +299,7 @@ const wrapMemoryTeamBattleSlots = () => ({
 export function getDatabase(event: RequestEvent): DatabaseContext {
 	if (USE_MEMORY) {
 		return {
+			events: wrapMemoryEvents(),
 			players: wrapMemoryPlayers(),
 			tournaments: wrapMemoryTournaments(),
 			pairs: wrapMemoryPairs(),
@@ -286,6 +314,7 @@ export function getDatabase(event: RequestEvent): DatabaseContext {
 	const db = event.platform?.env?.DB;
 	if (!db) {
 		return {
+			events: wrapMemoryEvents(),
 			players: wrapMemoryPlayers(),
 			tournaments: wrapMemoryTournaments(),
 			pairs: wrapMemoryPairs(),
@@ -298,6 +327,7 @@ export function getDatabase(event: RequestEvent): DatabaseContext {
 	}
 
 	return {
+		events: createEventsRepositoryD1(db),
 		players: createPlayersRepositoryD1(db),
 		tournaments: createTournamentsRepositoryD1(db),
 		pairs: createPairsRepositoryD1(db),
@@ -311,6 +341,7 @@ export function getDatabase(event: RequestEvent): DatabaseContext {
 
 export function resetForTests() {
 	if (USE_MEMORY) {
+		eventsMemory.__resetForTests();
 		playersMemory.__resetForTests();
 		tournamentsMemory.__resetForTests();
 		pairsMemory.__resetForTests();

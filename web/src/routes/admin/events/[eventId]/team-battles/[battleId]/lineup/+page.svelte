@@ -8,6 +8,90 @@
 	let flashMessage = '';
 	let flashVisible = false;
 
+	type SlotFormState = {
+		assignmentType: 'pair' | 'adhoc';
+		pairId: string;
+		player1Id: string;
+		player2Id: string;
+	};
+
+	const createSlotState = (slot: PageData['slots'][number]): SlotFormState => ({
+		assignmentType: slot.assignment_type,
+		pairId: slot.pair_id ?? '',
+		player1Id: slot.player1_id ?? '',
+		player2Id: slot.player2_id ?? ''
+	});
+
+	const createSlotStates = (slots: PageData['slots']): Record<string, SlotFormState> => {
+		const states: Record<string, SlotFormState> = {};
+		for (const slot of slots) {
+			states[slot.id] = createSlotState(slot);
+		}
+		return states;
+	};
+
+	const getSlotsSignature = (slots: PageData['slots']) =>
+		slots
+			.map(
+				(slot) =>
+					`${slot.id}:${slot.assignment_type}:${slot.pair_id ?? ''}:${slot.player1_id ?? ''}:${slot.player2_id ?? ''}`
+			)
+			.join('|');
+
+	let slotStates: Record<string, SlotFormState> = createSlotStates(data.slots);
+	let slotsSignature = getSlotsSignature(data.slots);
+
+	$: {
+		const nextSignature = getSlotsSignature(data.slots);
+		if (nextSignature !== slotsSignature) {
+			slotStates = createSlotStates(data.slots);
+			slotsSignature = nextSignature;
+		}
+	}
+
+	const updateSlotState = (slotId: string, patch: Partial<SlotFormState>) => {
+		const current = slotStates[slotId];
+		if (!current) return;
+
+		slotStates = {
+			...slotStates,
+			[slotId]: {
+				...current,
+				...patch
+			}
+		};
+	};
+
+	const handleAssignmentTypeChange = (slotId: string, type: 'pair' | 'adhoc') => {
+		const current = slotStates[slotId];
+		if (!current) return;
+
+		const patch: Partial<SlotFormState> = {
+			assignmentType: type
+		};
+
+		if (type === 'pair') {
+			patch.player1Id = '';
+			patch.player2Id = '';
+		} else {
+			patch.pairId = '';
+		}
+
+		updateSlotState(slotId, patch);
+	};
+
+	const handlePairChange = (slotId: string, value: string) => {
+		updateSlotState(slotId, { pairId: value });
+	};
+
+	const handlePlayerChange = (slotId: string, playerKey: 'player1Id' | 'player2Id', value: string) => {
+		if (playerKey === 'player1Id') {
+			updateSlotState(slotId, { player1Id: value });
+		} else {
+			updateSlotState(slotId, { player2Id: value });
+		}
+	};
+
 	$: if (form?.type) {
 		flashMessage = form.message || '';
 		flashVisible = true;
@@ -136,15 +220,19 @@
 										<input 
 											type="radio" 
 											name="assignmentType" 
-											value="pair" 
-											checked={slot.assignment_type === 'pair'}
+											value="pair"
+											checked={slotStates[slot.id].assignmentType === 'pair'}
+											on:change={() => handleAssignmentTypeChange(slot.id, 'pair')}
 										/>
 										ペアから選択
 									</label>
 									<select 
 										name="pairId" 
-										disabled={slot.assignment_type !== 'pair'}
-										value={slot.pair_id ?? ''}
+										disabled={slotStates[slot.id].assignmentType !== 'pair'}
+										value={slotStates[slot.id].pairId}
+										on:change={(event) =>
+											handlePairChange(slot.id, (event.currentTarget as HTMLSelectElement).value)
+										}
 									>
 										<option value="">-- ペアを選択 --</option>
 										{#each data.pairs as pair}
@@ -160,16 +248,20 @@
 										<input 
 											type="radio" 
 											name="assignmentType" 
-											value="adhoc" 
-											checked={slot.assignment_type === 'adhoc'}
+											value="adhoc"
+											checked={slotStates[slot.id].assignmentType === 'adhoc'}
+											on:change={() => handleAssignmentTypeChange(slot.id, 'adhoc')}
 										/>
 										個別に選択
 									</label>
 									<div class="player-selects">
 										<select 
 											name="player1Id" 
-											disabled={slot.assignment_type !== 'adhoc'}
-											value={slot.player1_id ?? ''}
+											disabled={slotStates[slot.id].assignmentType !== 'adhoc'}
+											value={slotStates[slot.id].player1Id}
+											on:change={(event) =>
+												handlePlayerChange(slot.id, 'player1Id', (event.currentTarget as HTMLSelectElement).value)
+											}
 										>
 											<option value="">-- プレイヤー1 --</option>
 											{#each data.players as player}
@@ -178,8 +270,11 @@
 										</select>
 										<select 
 											name="player2Id" 
-											disabled={slot.assignment_type !== 'adhoc'}
-											value={slot.player2_id ?? ''}
+											disabled={slotStates[slot.id].assignmentType !== 'adhoc'}
+											value={slotStates[slot.id].player2Id}
+											on:change={(event) =>
+												handlePlayerChange(slot.id, 'player2Id', (event.currentTarget as HTMLSelectElement).value)
+											}
 										>
 											<option value="">-- プレイヤー2 --</option>
 											{#each data.players as player}
@@ -193,10 +288,10 @@
 							</form>
 
 							<div class="slot-preview">
-								{#if slot.assignment_type === 'pair'}
-									<strong>ペア:</strong> {getPairName(slot.pair_id)}
+								{#if slotStates[slot.id].assignmentType === 'pair'}
+									<strong>ペア:</strong> {getPairName(slotStates[slot.id].pairId)}
 								{:else}
-									<strong>個別:</strong> {getPlayerName(slot.player1_id)} & {getPlayerName(slot.player2_id)}
+									<strong>個別:</strong> {getPlayerName(slotStates[slot.id].player1Id)} & {getPlayerName(slotStates[slot.id].player2Id)}
 								{/if}
 							</div>
 						</div>
@@ -268,15 +363,19 @@
 										<input 
 											type="radio" 
 											name="assignmentType" 
-											value="pair" 
-											checked={slot.assignment_type === 'pair'}
+											value="pair"
+											checked={slotStates[slot.id].assignmentType === 'pair'}
+											on:change={() => handleAssignmentTypeChange(slot.id, 'pair')}
 										/>
 										ペアから選択
 									</label>
 									<select 
 										name="pairId" 
-										disabled={slot.assignment_type !== 'pair'}
-										value={slot.pair_id ?? ''}
+										disabled={slotStates[slot.id].assignmentType !== 'pair'}
+										value={slotStates[slot.id].pairId}
+										on:change={(event) =>
+											handlePairChange(slot.id, (event.currentTarget as HTMLSelectElement).value)
+										}
 									>
 										<option value="">-- ペアを選択 --</option>
 										{#each data.pairs as pair}
