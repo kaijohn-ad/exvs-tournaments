@@ -6,12 +6,13 @@
 - Primary workspace: `web/` (SvelteKit) + `docs/`
 
 ## Local Setup
-1. Install dependencies: `npm install` (run inside `web/`).
-2. Copy `.env.local` template (already present) and set:
+1. Ensure Node.js v20.19.0 or newer is active (`nvm use` will read `.nvmrc`).
+2. Install dependencies: `npm install` (run inside `web/`).
+3. Copy `.env.local` template (already present) and set:
    - `BASIC_AUTH_USER`
    - `BASIC_AUTH_PASS`
-3. Start dev server: `npm run dev`
-4. Access admin UI at `http://localhost:5173/admin` (Basic認証必須)。
+4. Start dev server: `npm run dev`
+5. Access admin UI at `http://localhost:5173/admin` (Basic認証必須)。
 
 ## Current Functionality Snapshot
 - Basic SvelteKit scaffold with Cloudflare adapter.
