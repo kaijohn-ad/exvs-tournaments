@@ -1,6 +1,6 @@
 # Boost Bracket TODO一覧
 
-最終更新: 2025-10-27 10:20 (UTC)
+最終更新: 2025-10-27 (Devin session 5e0c0da4 完了)
 
 ## ✅ 完了済み
 - [x] SvelteKit プロジェクト初期化と Cloudflare アダプタ設定
@@ -28,22 +28,140 @@
   - Workers互換のcrypto.randomUUID()への置き換え（node:crypto削除）
   - ローカル開発での設定不要化（D1未設定でも動作）
 
-## 🚧 進行中
-- [ ] Node.js 20.19 以降への移行徹底
+- [x] Node.js 20.19 以降への移行徹底
   - [.nvmrc](../web/.nvmrc) および `package.json` の `engines` を更新済み
-  - 開発者・CI 環境のバージョン整合を完了する
+  - GitHub Actions CI/CD ワークフローで Node.js バージョン固定
+- [x] CI/CD パイプライン整備（自動テスト、Pages デプロイ）
+  - `.github/workflows/ci.yml`: PR/push時の自動テスト・型チェック
+  - `.github/workflows/deploy.yml`: master へのマージで自動デプロイ
+  - デプロイ前に `npm run check` と `npm run test` を実行
+- [x] デプロイ手順とロールバック方針のドキュメント化
+  - `docs/deployment.md` に本番D1セットアップ、デプロイ、ロールバック手順を記載
+- [x] ペア管理（2人チーム）の CRUD + JSON 入出力
+  - `src/lib/server/repositories/pairs.ts`: メモリ実装
+  - `src/lib/server/repositories/pairs-d1.ts`: D1実装
+  - `src/routes/admin/events/[eventId]/entries/pairs/`: 完全なCRUD UI
+  - JSON インポート/エクスポート、JSONエディタ機能実装
+  - 管理トップからの導線追加
+- [x] チーム管理の CRUD + JSON 入出力
+  - `src/lib/server/repositories/teams.ts`: メモリ実装
+  - `src/lib/server/repositories/teams-d1.ts`: D1実装
+  - `src/routes/admin/events/[eventId]/entries/teams/`: 完全なCRUD UI
+  - JSON インポート/エクスポート、JSONエディタ機能実装
+  - 管理トップからの導線追加
+- [x] 団体戦リポジトリの実装
+  - `src/lib/server/repositories/team-battles.ts`: メモリ実装
+  - `src/lib/server/repositories/team-battles-d1.ts`: D1実装
+  - データベースコンテキストへの統合完了
+- [x] 試合ログリポジトリの実装
+  - `src/lib/server/repositories/matches.ts`: メモリ実装
+  - `src/lib/server/repositories/matches-d1.ts`: D1実装
+  - データベースコンテキストへの統合完了
+- [x] プレイヤー統計リポジトリの実装
+  - `src/lib/server/repositories/player-stats.ts`: メモリ実装
+  - `src/lib/server/repositories/player-stats-d1.ts`: D1実装
+  - データベースコンテキストへの統合完了
+- [x] 公開ビュー（観覧用）の基本ルーティング
+  - `/view/[slug]` ルーティング作成
+  - 基本的なUI実装（プレースホルダー）
+
+- [x] 試合ログ UI の実装
+  - `src/routes/admin/events/[eventId]/matches/`: 試合履歴表示UI
+  - side_a/side_b 構造に対応した表示ロジック
+  - スコア表示、勝敗バッジ、削除機能
+  - 管理トップからの導線追加
+- [x] プレイヤー統計ビュー UI の実装
+  - `src/routes/admin/events/[eventId]/stats/`: 統計表示UI
+  - 勝率計算、ランキング表示
+  - 視覚的な勝率バー表示
+  - 管理トップからの導線追加
+- [x] 団体戦（早稲田式）の基本 UI 実装
+  - `src/routes/admin/events/[eventId]/team-battles/`: 団体戦一覧UI
+  - 団体戦表示（チーム名、スロット数、形式、ステータス、結果）
+  - 削除機能
+  - 管理トップからの導線追加
+  - ⚠️ 作成・編集・ラインナップ管理機能は未実装
+
+## 🚧 進行中
+なし
 
 ## 📝 着手予定
-- [ ] D1データベースの本番環境セットアップ（`wrangler d1 create` 実行）
-- [ ] Cloudflare Pages/Functionsへのデプロイ設定
-- [ ] プレイヤー/トーナメント以外のエンティティ設計と UI/UX 実装
-  - [ ] ペア管理（2人チーム）の CRUD + JSON 入出力
-  - [ ] 団体戦（早稲田式）の設定・ラインナップ管理
-  - [ ] 試合ログ保存と統計ビューの基本実装
-- [ ] 公開ビュー（観覧用）の設計・実装
-  - [ ] イベント slug を用いた公開ルーティング
-  - [ ] トーナメント進行状況の閲覧 UI
-- [ ] CI/CD パイプライン整備（自動テスト、Pages デプロイ）
+
+### 優先度高：団体戦機能の完成
+- [ ] 団体戦作成フォームの実装
+  - チーム選択、スロット数設定、形式選択
+  - バリデーション・エラーハンドリング
+- [ ] ラインナップ編集UIの実装
+  - team_battle_slots テーブル操作
+  - プレイヤーのスロット割り当て
+  - ドラッグ&ドロップまたは選択式UI
+- [ ] 試合進行管理機能
+  - スロット単位の試合結果入力
+  - 自動勝敗判定
+  - タイブレーク処理
+
+### 優先度高：トーナメントブラケット機能
+- [ ] ブラケット生成ロジックの実装
+  - シングルエリミネーション形式
+  - シード配置（ランダム/手動）
+  - bracket_matches テーブル操作
+- [ ] ブラケット表示UIの実装
+  - トーナメント表の視覚化
+  - 試合結果の表示
+  - 進行状況の可視化
+- [ ] 試合結果入力UIの実装
+  - 各マッチの勝者選択
+  - 次ラウンドへの自動進出
+  - 結果の保存と統計への反映
+
+### 優先度中：公開ビューの完成
+- [ ] トーナメントブラケット公開表示
+  - 観覧者向けの読み取り専用ビュー
+  - リアルタイム更新（オプション）
+  - モバイル対応レイアウト
+- [ ] イベント情報の表示改善
+  - 参加者一覧
+  - スケジュール表示
+  - 結果サマリー
+
+### 優先度低：本番環境セットアップ（手動作業）
+- [ ] D1データベースの本番環境セットアップ
+  - `wrangler d1 create exvs-tournaments-db` 実行
+  - `wrangler d1 migrations apply --remote` 実行
+  - 手順は `docs/deployment.md` に記載済み
+- [ ] Cloudflare Pages 環境変数の設定
+  - `BASIC_AUTH_USER` と `BASIC_AUTH_PASS` の設定
+  - D1 バインディングの確認
+- [ ] GitHub Secrets の設定
+  - `CLOUDFLARE_API_TOKEN` の登録
+  - `CLOUDFLARE_ACCOUNT_ID` の登録
+
+---
+
+## 📊 セッション成果サマリー (2025-10-27)
+
+**PR**: https://github.com/kaijohn-ad/exvs-tournaments/pull/3
+**セッションID**: 5e0c0da4c6134692bfdaaed6b10862ef
+**CI ステータス**: ✅ All checks passed
+
+### 実装完了機能
+1. **ペア管理**: 完全なCRUD + JSON入出力
+2. **チーム管理**: 完全なCRUD + JSON入出力
+3. **リポジトリ層**: 6つの新規リポジトリ（pairs, teams, team-battles, matches, player-stats）
+4. **統計・ログUI**: プレイヤー統計表示、試合ログ表示
+5. **団体戦UI**: 基本的な一覧・削除機能（作成・編集は未実装）
+6. **公開ビュー**: 基本ルーティング（ブラケット表示は未実装）
+7. **CI/CD**: GitHub Actions による自動テスト・デプロイ
+
+### テスト結果
+- ✅ 型チェック: 0 errors (CSS warnings のみ)
+- ✅ ユニットテスト: 27/27 passed
+- ✅ CI/CD: All checks passed
+
+### 次回セッションへの引き継ぎ
+- 団体戦の作成・編集・ラインナップ管理機能が最優先
+- トーナメントブラケット機能の実装が次点
+- 公開ビューの完成は優先度中
 
 ---
 更新ルール:
