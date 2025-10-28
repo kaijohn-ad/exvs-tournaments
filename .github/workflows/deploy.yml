@@ -41,6 +41,6 @@ jobs:
         apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         projectName: exvs-tournaments
-        directory: remix/build/client
-        wranglerConfigPath: remix/wrangler.toml
+        workingDirectory: ./remix
+        directory: build/client
         gitHubToken: ${{ secrets.GITHUB_TOKEN }}
