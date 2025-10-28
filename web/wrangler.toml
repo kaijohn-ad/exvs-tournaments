@@ -12,5 +12,3 @@ database_name = "exvs-tournaments-db"
 database_id = "40f8521b-2bb5-4887-bd73-3f3e2fc56521"
 
 # Environment variables (set via Cloudflare dashboard or wrangler secret)
-BASIC_AUTH_USER = "admin"
-BASIC_AUTH_PASS = "adminadmin"
