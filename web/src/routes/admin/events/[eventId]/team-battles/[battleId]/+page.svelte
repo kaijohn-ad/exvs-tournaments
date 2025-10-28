@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { PageData, ActionData } from './$types';
 	import { invalidate } from '$app/navigation';
+	import { browser } from '$app/environment';
 
 	export let data: PageData;
 	export let form: ActionData;
@@ -11,7 +12,9 @@
 	$: if (form?.success) {
 		statusMessage = form.message || '操作が完了しました';
 		flashType = 'success';
-		void invalidate(`team-battle:${data.battleId}`);
+		if (browser) {
+			void invalidate(`team-battle:${data.battleId}`);
+		}
 		setTimeout(() => {
 			statusMessage = '';
 		}, 4000);
