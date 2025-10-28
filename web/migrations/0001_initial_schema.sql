@@ -144,7 +144,6 @@ CREATE TABLE IF NOT EXISTS matches (
     side_a_player1_id TEXT,
     side_a_player2_id TEXT,
     side_b_type TEXT NOT NULL CHECK(side_b_type IN ('pair', 'adhoc')),
-CREATE INDEX IF NOT EXISTS idx_matches_context_slot ON matches(context, context_id, slot_index);
     side_b_pair_id TEXT,
     side_b_player1_id TEXT,
     side_b_player2_id TEXT,
@@ -161,6 +160,7 @@ CREATE INDEX IF NOT EXISTS idx_matches_context_slot ON matches(context, context_
     FOREIGN KEY (side_b_player2_id) REFERENCES players(id) ON DELETE SET NULL
 );
 
+CREATE INDEX IF NOT EXISTS idx_matches_context_slot ON matches(context, context_id, slot_index);
 CREATE INDEX IF NOT EXISTS idx_matches_context ON matches(context, context_id);
 CREATE INDEX IF NOT EXISTS idx_matches_played_at ON matches(played_at);
 

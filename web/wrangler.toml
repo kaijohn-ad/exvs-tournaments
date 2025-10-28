@@ -7,7 +7,7 @@ compatibility_date = "2024-10-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "exvs-tournaments-db"
-database_id = "preview_database_id"  # Replace with actual database ID after creation
+database_id = "40f8521b-2bb5-4887-bd73-3f3e2fc56521"
 
 # Environment variables (set via Cloudflare dashboard or wrangler secret)
 # BASIC_AUTH_USER
