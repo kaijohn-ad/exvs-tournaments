@@ -1,0 +1,10 @@
+name = "remix"
+compatibility_date = "2025-10-08"
+upload_source_maps = true
+pages_build_output_dir = "build/client"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "exvs-tournaments-db"
+database_id = "40f8521b-2bb5-4887-bd73-3f3e2fc56521"
