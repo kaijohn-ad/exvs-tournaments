@@ -138,11 +138,13 @@ CREATE TABLE IF NOT EXISTS matches (
     id TEXT PRIMARY KEY,
     context TEXT NOT NULL CHECK(context IN ('bracket', 'teamBattle', 'tiebreak')),
     context_id TEXT NOT NULL,
+    slot_index INTEGER,
     side_a_type TEXT NOT NULL CHECK(side_a_type IN ('pair', 'adhoc')),
     side_a_pair_id TEXT,
     side_a_player1_id TEXT,
     side_a_player2_id TEXT,
     side_b_type TEXT NOT NULL CHECK(side_b_type IN ('pair', 'adhoc')),
+CREATE INDEX IF NOT EXISTS idx_matches_context_slot ON matches(context, context_id, slot_index);
     side_b_pair_id TEXT,
     side_b_player1_id TEXT,
     side_b_player2_id TEXT,

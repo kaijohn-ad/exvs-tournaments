@@ -67,8 +67,26 @@ function calculateBattleResult(
 	return { result, teamAWins, teamBWins };
 }
 
+async function resolveSlotPlayers(eventId: string, db: any, slot: any) {
+	const players: string[] = [];
+
+	if (slot.assignment_type === 'pair') {
+		if (slot.pair_id) {
+			const pair = await db.pairs.ensurePair(eventId, slot.pair_id);
+			if (pair.player1_id) players.push(pair.player1_id);
+			if (pair.player2_id) players.push(pair.player2_id);
+		}
+	} else {
+		if (slot.player1_id) players.push(slot.player1_id);
+		if (slot.player2_id) players.push(slot.player2_id);
+	}
+
+	return players;
+}
+
 async function recordSlotMatch(
 	db: any,
+	eventId: string,
 	battleId: string,
 	slotIndex: number,
 	teamASlot: any,
@@ -79,17 +97,32 @@ async function recordSlotMatch(
 ) {
 	const winnerSide = winnerTeamId === teamASlot.team_id ? 'a' : 'b';
 
+	const teamAPlayers = await resolveSlotPlayers(eventId, db, teamASlot);
+	const teamBPlayers = await resolveSlotPlayers(eventId, db, teamBSlot);
+
+	const [teamAPlayer1, teamAPlayer2] = teamAPlayers.length > 0 ? teamAPlayers : [teamASlot.player1_id, teamASlot.player2_id];
+	const [teamBPlayer1, teamBPlayer2] = teamBPlayers.length > 0 ? teamBPlayers : [teamBSlot.player1_id, teamBSlot.player2_id];
+
+ 
+	const existingMatches: any[] = await db.matches.listMatches('teamBattle', battleId);
+	const existingMatch = existingMatches.find((m) => m.slot_index === slotIndex);
+
+	if (existingMatch) {
+		throw fail(400, { error: `スロット${slotIndex + 1}の結果はすでに記録されています。削除してから再入力してください。` });
+	}
+
 	const matchData = {
 		context: 'teamBattle' as const,
 		context_id: battleId,
+		slot_index: slotIndex,
 		side_a_type: teamASlot.assignment_type as 'pair' | 'adhoc',
 		side_a_pair_id: teamASlot.pair_id,
-		side_a_player1_id: teamASlot.player1_id,
-		side_a_player2_id: teamASlot.player2_id,
+		side_a_player1_id: teamAPlayer1 ?? undefined,
+		side_a_player2_id: teamAPlayer2 ?? undefined,
 		side_b_type: teamBSlot.assignment_type as 'pair' | 'adhoc',
 		side_b_pair_id: teamBSlot.pair_id,
-		side_b_player1_id: teamBSlot.player1_id,
-		side_b_player2_id: teamBSlot.player2_id,
+		side_b_player1_id: teamBPlayer1 ?? undefined,
+		side_b_player2_id: teamBPlayer2 ?? undefined,
 		score_a: scoreA,
 		score_b: scoreB,
 		winner_side: winnerSide
@@ -97,17 +130,12 @@ async function recordSlotMatch(
 
 	const match = await db.matches.createMatch(matchData);
 
-	const playerIds: string[] = [];
-	if (teamASlot.player1_id) playerIds.push(teamASlot.player1_id);
-	if (teamASlot.player2_id) playerIds.push(teamASlot.player2_id);
-	if (teamBSlot.player1_id) playerIds.push(teamBSlot.player1_id);
-	if (teamBSlot.player2_id) playerIds.push(teamBSlot.player2_id);
+	for (const playerId of teamAPlayers) {
+		await db.playerStats.incrementPlayerStats(playerId, 'teamBattle', battleId, winnerSide === 'a');
+	}
 
-	for (const playerId of playerIds) {
-		const isTeamA = playerId === teamASlot.player1_id || playerId === teamASlot.player2_id;
-		const won = (isTeamA && winnerSide === 'a') || (!isTeamA && winnerSide === 'b');
-		
-		await db.playerStats.incrementPlayerStats(playerId, 'teamBattle', battleId, won);
+	for (const playerId of teamBPlayers) {
+		await db.playerStats.incrementPlayerStats(playerId, 'teamBattle', battleId, winnerSide === 'b');
 	}
 
 	return match;
@@ -139,7 +167,7 @@ export const actions: Actions = {
 			return fail(400, { error: 'Slot configuration not found' });
 		}
 
-		await recordSlotMatch(db, battleId, slotIndex, teamASlot, teamBSlot, scoreA, scoreB, winnerTeamId);
+		await recordSlotMatch(db, eventId, battleId, slotIndex, teamASlot, teamBSlot, scoreA, scoreB, winnerTeamId);
 
 		if (battle.status === 'pending') {
 			await db.teamBattles.updateTeamBattle(eventId, battleId, {
@@ -163,12 +191,12 @@ export const actions: Actions = {
 			return fail(400, { error: `全${battle.slots_count}スロットの結果を入力してください` });
 		}
 
-		const slotResults: SlotResult[] = matches.map((match, index) => ({
-			slot_index: index,
-			winner_team_id: match.winner_side === 'a' ? battle.team_a_id : battle.team_b_id,
-			score_a: match.score_a,
-			score_b: match.score_b
-		}));
+	const slotResults: SlotResult[] = matches.map((match, index) => ({
+		slot_index: typeof match.slot_index === 'number' ? match.slot_index : index,
+		winner_team_id: match.winner_side === 'a' ? battle.team_a_id : battle.team_b_id,
+		score_a: match.score_a,
+		score_b: match.score_b
+	}));
 
 		const { result, teamAWins, teamBWins } = calculateBattleResult(
 			slotResults,

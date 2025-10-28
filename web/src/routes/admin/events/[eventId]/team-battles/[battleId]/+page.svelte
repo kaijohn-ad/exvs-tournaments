@@ -51,9 +51,9 @@
 		}
 	}
 
-	function getSlotResult(slotIndex: number): any | null {
-		return data.matches.find((m, idx) => idx === slotIndex) || null;
-	}
+function getSlotResult(slotIndex: number): any | null {
+	return data.matches.find((m) => m.slot_index === slotIndex) || null;
+}
 
 	function getStatusBadgeClass(status: string): string {
 		switch (status) {

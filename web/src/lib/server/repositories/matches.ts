@@ -1,6 +1,7 @@
 export interface MatchData {
 	context: 'bracket' | 'teamBattle' | 'tiebreak';
 	context_id: string;
+	slot_index?: number | null;
 	side_a_type: 'pair' | 'adhoc';
 	side_a_pair_id?: string;
 	side_a_player1_id?: string;
@@ -28,17 +29,38 @@ export interface MatchRecord extends MatchData {
 
 const store = new Map<string, MatchRecord>();
 
+const sortMatchesForContext = (matches: MatchRecord[], contextType?: string) => {
+	if (contextType === 'teamBattle') {
+		return matches
+			.slice()
+			.sort((a, b) => {
+				const slotA = a.slot_index ?? Number.MAX_SAFE_INTEGER;
+				const slotB = b.slot_index ?? Number.MAX_SAFE_INTEGER;
+
+				if (slotA !== slotB) {
+					return slotA - slotB;
+				}
+
+				return a.played_at.localeCompare(b.played_at);
+			});
+	}
+
+	return matches;
+};
+
 export const listMatches = (contextType?: string, contextId?: string): MatchRecord[] => {
 	const all = Array.from(store.values());
-	
+
 	if (contextType && contextId) {
-		return all.filter(m => m.context === contextType && m.context_id === contextId);
+		const filtered = all.filter(m => m.context === contextType && m.context_id === contextId);
+		return sortMatchesForContext(filtered, contextType);
 	}
-	
+
 	if (contextType) {
-		return all.filter(m => m.context === contextType);
+		const filtered = all.filter(m => m.context === contextType);
+		return sortMatchesForContext(filtered, contextType);
 	}
-	
+
 	return all;
 };
 
@@ -50,6 +72,7 @@ export const createMatch = (data: MatchData): MatchRecord => {
 		id,
 		context: data.context,
 		context_id: data.context_id,
+		slot_index: data.slot_index ?? null,
 		side_a_type: data.side_a_type,
 		side_a_pair_id: data.side_a_pair_id,
 		side_a_player1_id: data.side_a_player1_id,
@@ -86,6 +109,7 @@ export const updateMatch = (matchId: string, data: MatchData): MatchRecord => {
 		...existing,
 		context: data.context,
 		context_id: data.context_id,
+		slot_index: data.slot_index ?? existing.slot_index ?? null,
 		side_a_type: data.side_a_type,
 		side_a_pair_id: data.side_a_pair_id,
 		side_a_player1_id: data.side_a_player1_id,
@@ -126,6 +150,7 @@ export const setMatches = (matches: MatchImportData[]): MatchRecord[] => {
 			id,
 			context: match.context,
 			context_id: match.context_id,
+			slot_index: match.slot_index ?? null,
 			side_a_type: match.side_a_type,
 			side_a_pair_id: match.side_a_pair_id,
 			side_a_player1_id: match.side_a_player1_id,
