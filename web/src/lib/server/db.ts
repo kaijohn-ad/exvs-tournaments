@@ -68,6 +68,23 @@ export interface DatabaseContext {
 		deleteTeamBattle(eventId: string, battleId: string): Promise<void>;
 		setTeamBattles(eventId: string, battles: teamBattlesMemory.TeamBattleImportData[]): Promise<teamBattlesMemory.TeamBattleRecord[]>;
 	};
+	teamBattleSlots: {
+		listTeamBattleSlots(battleId: string): Promise<teamBattleSlotsMemory.TeamBattleSlotRecord[]>;
+		listTeamBattleSlotsByTeam(battleId: string, teamId: string): Promise<teamBattleSlotsMemory.TeamBattleSlotRecord[]>;
+		createTeamBattleSlot(data: teamBattleSlotsMemory.TeamBattleSlotData): Promise<teamBattleSlotsMemory.TeamBattleSlotRecord>;
+		ensureTeamBattleSlot(battleId: string, slotId: string): Promise<teamBattleSlotsMemory.TeamBattleSlotRecord>;
+		updateTeamBattleSlot(battleId: string, slotId: string, data: teamBattleSlotsMemory.TeamBattleSlotData): Promise<teamBattleSlotsMemory.TeamBattleSlotRecord>;
+		deleteTeamBattleSlot(battleId: string, slotId: string): Promise<void>;
+		deleteTeamBattleSlotsByBattle(battleId: string): Promise<void>;
+		setTeamBattleSlots(battleId: string, slots: teamBattleSlotsMemory.TeamBattleSlotImportData[]): Promise<teamBattleSlotsMemory.TeamBattleSlotRecord[]>;
+		listSlotsByBattle(battleId: string): Promise<teamBattleSlotsMemory.TeamBattleSlotRecord[]>;
+		createSlot(data: teamBattleSlotsMemory.TeamBattleSlotData): Promise<teamBattleSlotsMemory.TeamBattleSlotRecord>;
+		ensureSlot(slotId: string): Promise<teamBattleSlotsMemory.TeamBattleSlotRecord>;
+		updateSlot(slotId: string, data: teamBattleSlotsMemory.TeamBattleSlotData): Promise<teamBattleSlotsMemory.TeamBattleSlotRecord>;
+		deleteSlot(slotId: string): Promise<void>;
+		deleteSlotsByBattle(battleId: string): Promise<void>;
+		setSlots(slots: teamBattleSlotsMemory.TeamBattleSlotImportData[]): Promise<teamBattleSlotsMemory.TeamBattleSlotRecord[]>;
+	};
 	matches: {
 		listMatches(contextType?: string, contextId?: string): Promise<matchesMemory.MatchRecord[]>;
 		createMatch(data: matchesMemory.MatchData): Promise<matchesMemory.MatchRecord>;
@@ -85,16 +102,6 @@ export interface DatabaseContext {
 		incrementPlayerStats(playerId: string, scope: string, scopeId: string | undefined, won: boolean): Promise<playerStatsMemory.PlayerStatsRecord>;
 		deletePlayerStats(statsId: string): Promise<void>;
 		setPlayerStats(stats: playerStatsMemory.PlayerStatsImportData[]): Promise<playerStatsMemory.PlayerStatsRecord[]>;
-	};
-	teamBattleSlots: {
-		listTeamBattleSlots(battleId: string): Promise<teamBattleSlotsMemory.TeamBattleSlotRecord[]>;
-		listTeamBattleSlotsByTeam(battleId: string, teamId: string): Promise<teamBattleSlotsMemory.TeamBattleSlotRecord[]>;
-		createTeamBattleSlot(data: teamBattleSlotsMemory.TeamBattleSlotData): Promise<teamBattleSlotsMemory.TeamBattleSlotRecord>;
-		ensureTeamBattleSlot(battleId: string, slotId: string): Promise<teamBattleSlotsMemory.TeamBattleSlotRecord>;
-		updateTeamBattleSlot(battleId: string, slotId: string, data: teamBattleSlotsMemory.TeamBattleSlotData): Promise<teamBattleSlotsMemory.TeamBattleSlotRecord>;
-		deleteTeamBattleSlot(battleId: string, slotId: string): Promise<void>;
-		deleteTeamBattleSlotsByBattle(battleId: string): Promise<void>;
-		setTeamBattleSlots(battleId: string, slots: teamBattleSlotsMemory.TeamBattleSlotImportData[]): Promise<teamBattleSlotsMemory.TeamBattleSlotRecord[]>;
 	};
 }
 
@@ -221,6 +228,61 @@ const wrapMemoryTeamBattles = () => ({
 	}
 });
 
+const wrapMemoryTeamBattleSlots = () => ({
+	async listTeamBattleSlots(battleId: string) {
+		return teamBattleSlotsMemory.listTeamBattleSlots(battleId);
+	},
+	async listTeamBattleSlotsByTeam(battleId: string, teamId: string) {
+		return teamBattleSlotsMemory.listTeamBattleSlotsByTeam(battleId, teamId);
+	},
+	async createTeamBattleSlot(data: teamBattleSlotsMemory.TeamBattleSlotData) {
+		return teamBattleSlotsMemory.createTeamBattleSlot(data);
+	},
+	async ensureTeamBattleSlot(battleId: string, slotId: string) {
+		return teamBattleSlotsMemory.ensureTeamBattleSlot(battleId, slotId);
+	},
+	async updateTeamBattleSlot(
+		battleId: string,
+		slotId: string,
+		data: teamBattleSlotsMemory.TeamBattleSlotData
+	) {
+		return teamBattleSlotsMemory.updateTeamBattleSlot(battleId, slotId, data);
+	},
+	async deleteTeamBattleSlot(battleId: string, slotId: string) {
+		return teamBattleSlotsMemory.deleteTeamBattleSlot(battleId, slotId);
+	},
+	async deleteTeamBattleSlotsByBattle(battleId: string) {
+		return teamBattleSlotsMemory.deleteTeamBattleSlotsByBattle(battleId);
+	},
+	async setTeamBattleSlots(
+		battleId: string,
+		slots: teamBattleSlotsMemory.TeamBattleSlotImportData[]
+	) {
+		return teamBattleSlotsMemory.setTeamBattleSlots(battleId, slots);
+	},
+	async listSlotsByBattle(battleId: string) {
+		return teamBattleSlotsMemory.listSlotsByBattle(battleId);
+	},
+	async createSlot(data: teamBattleSlotsMemory.TeamBattleSlotData) {
+		return teamBattleSlotsMemory.createSlot(data);
+	},
+	async ensureSlot(slotId: string) {
+		return teamBattleSlotsMemory.ensureSlot(slotId);
+	},
+	async updateSlot(slotId: string, data: teamBattleSlotsMemory.TeamBattleSlotData) {
+		return teamBattleSlotsMemory.updateSlot(slotId, data);
+	},
+	async deleteSlot(slotId: string) {
+		return teamBattleSlotsMemory.deleteSlot(slotId);
+	},
+	async deleteSlotsByBattle(battleId: string) {
+		return teamBattleSlotsMemory.deleteSlotsByBattle(battleId);
+	},
+	async setSlots(slots: teamBattleSlotsMemory.TeamBattleSlotImportData[]) {
+		return teamBattleSlotsMemory.setSlots(slots);
+	}
+});
+
 const wrapMemoryMatches = () => ({
 	async listMatches(contextType?: string, contextId?: string) {
 		return matchesMemory.listMatches(contextType, contextId);
@@ -266,33 +328,6 @@ const wrapMemoryPlayerStats = () => ({
 	},
 	async setPlayerStats(stats: playerStatsMemory.PlayerStatsImportData[]) {
 		return playerStatsMemory.setPlayerStats(stats);
-	}
-});
-
-const wrapMemoryTeamBattleSlots = () => ({
-	async listTeamBattleSlots(battleId: string) {
-		return teamBattleSlotsMemory.listTeamBattleSlots(battleId);
-	},
-	async listTeamBattleSlotsByTeam(battleId: string, teamId: string) {
-		return teamBattleSlotsMemory.listTeamBattleSlotsByTeam(battleId, teamId);
-	},
-	async createTeamBattleSlot(data: teamBattleSlotsMemory.TeamBattleSlotData) {
-		return teamBattleSlotsMemory.createTeamBattleSlot(data);
-	},
-	async ensureTeamBattleSlot(battleId: string, slotId: string) {
-		return teamBattleSlotsMemory.ensureTeamBattleSlot(battleId, slotId);
-	},
-	async updateTeamBattleSlot(battleId: string, slotId: string, data: teamBattleSlotsMemory.TeamBattleSlotData) {
-		return teamBattleSlotsMemory.updateTeamBattleSlot(battleId, slotId, data);
-	},
-	async deleteTeamBattleSlot(battleId: string, slotId: string) {
-		return teamBattleSlotsMemory.deleteTeamBattleSlot(battleId, slotId);
-	},
-	async deleteTeamBattleSlotsByBattle(battleId: string) {
-		return teamBattleSlotsMemory.deleteTeamBattleSlotsByBattle(battleId);
-	},
-	async setTeamBattleSlots(battleId: string, slots: teamBattleSlotsMemory.TeamBattleSlotImportData[]) {
-		return teamBattleSlotsMemory.setTeamBattleSlots(battleId, slots);
 	}
 });
 
