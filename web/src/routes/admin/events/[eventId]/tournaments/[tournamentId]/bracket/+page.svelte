@@ -1,8 +1,39 @@
 
 <script lang="ts">
-	import type { PageData } from './$types';
+	import type { ActionData, PageData } from './$types';
+	import { invalidate } from '$app/navigation';
+	import { browser } from '$app/environment';
+	import { onDestroy } from 'svelte';
 
 	export let data: PageData;
+	export let form: ActionData;
+
+	type FlashType = 'success' | 'error';
+
+	let statusMessage = '';
+	let flashType: FlashType = 'success';
+	let recentMatchId: string | null = null;
+	let resetTimer: ReturnType<typeof setTimeout> | null = null;
+
+	const scheduleReset = (duration: number) => {
+		if (!browser) {
+			return;
+		}
+		if (resetTimer) {
+			clearTimeout(resetTimer);
+		}
+		resetTimer = setTimeout(() => {
+			statusMessage = '';
+			recentMatchId = null;
+			resetTimer = null;
+		}, duration);
+	};
+
+	onDestroy(() => {
+		if (resetTimer) {
+			clearTimeout(resetTimer);
+		}
+	});
 
 	type ParticipantType = 'pair' | 'bye' | 'empty' | 'unknown';
 
@@ -33,6 +64,37 @@
 		statusLabel: string;
 		statusClass: string;
 		statusModifier: 'completed' | 'in-progress' | 'pending';
+	}
+
+	const extractMatchId = (value: ActionData | undefined): string | null => {
+		if (!value || typeof value !== 'object' || !('matchId' in value)) {
+			return null;
+		}
+
+		const maybeMatchId = (value as Record<string, unknown>).matchId;
+		return typeof maybeMatchId === 'string' ? maybeMatchId : null;
+	};
+
+	let currentFormMatchId: string | null = null;
+	$: currentFormMatchId = extractMatchId(form);
+
+	$: if (form?.success) {
+		statusMessage = form.message ?? '試合結果を記録しました。';
+		flashType = 'success';
+		recentMatchId = currentFormMatchId;
+		if (browser) {
+			void invalidate(`tournament-bracket:${data.eventId}:${data.tournamentId}`);
+		}
+		scheduleReset(4000);
+	}
+
+	$: if (form?.error) {
+		statusMessage = `エラー: ${form.error}`;
+		flashType = 'error';
+		if (currentFormMatchId) {
+			recentMatchId = currentFormMatchId;
+		}
+		scheduleReset(5000);
 	}
 
 	const playerNameById: Record<string, string> = {};
@@ -196,6 +258,26 @@
 		return classes.join(' ');
 	};
 
+	const canRecordMatch = (match: MatchDisplay): boolean => {
+		return (
+			match.participantA.type === 'pair' &&
+			match.participantB.type === 'pair' &&
+			Boolean(match.participantA.pairId && match.participantB.pairId) &&
+			!match.isCompleted &&
+			!match.isAutoAdvance
+		);
+	};
+
+	const getWinnerLabel = (match: MatchDisplay): string => {
+		if (match.winnerSide === 'a') {
+			return match.participantA.label;
+		}
+		if (match.winnerSide === 'b') {
+			return match.participantB.label;
+		}
+		return '—';
+	};
+
 	const matchDisplays = data.bracketMatches
 		.map(toMatchDisplay)
 		.sort((a, b) => {
@@ -261,6 +343,12 @@
 		</nav>
 	</header>
 
+	{#if statusMessage}
+		<div class="status-message" class:error={flashType === 'error'}>
+			{statusMessage}
+		</div>
+	{/if}
+
 	<section class="card progress-card">
 		<header class="card-header">
 			<h2>進行状況</h2>
@@ -314,7 +402,7 @@
 								<p class="round-empty">マッチが設定されていません。</p>
 							{:else}
 								{#each round.matches as match}
-									<article class={`match-card ${match.statusModifier}`}>
+									<article class={`match-card ${match.statusModifier}`} class:recently-updated={recentMatchId === match.id}>
 										<header class="match-header">
 											<span class="match-seed">#{match.position}</span>
 											<span class={`status-badge ${match.statusClass}`}>{match.statusLabel}</span>
@@ -347,6 +435,58 @@
 										</div>
 										{#if match.isAutoAdvance}
 											<p class="auto-advance">BYEのため自動勝ち上がり</p>
+										{:else if match.isCompleted}
+											<p class="match-result">
+												勝者: <strong>{getWinnerLabel(match)}</strong>
+												<span class="result-score">{match.scoreALabel} - {match.scoreBLabel}</span>
+											</p>
+										{:else if canRecordMatch(match)}
+											<form method="POST" action="?/record" class="match-form">
+												<input type="hidden" name="matchId" value={match.id} />
+												<div class="score-grid">
+													<label class="score-input-group">
+														<span>{match.participantA.label} スコア</span>
+														<input
+															type="number"
+															name="scoreA"
+															min="0"
+															required
+															value={match.scoreA ?? ''}
+															aria-label={`${match.participantA.label}のスコア`}
+														/>
+													</label>
+													<label class="score-input-group">
+														<span>{match.participantB.label} スコア</span>
+														<input
+															type="number"
+															name="scoreB"
+															min="0"
+															required
+															value={match.scoreB ?? ''}
+															aria-label={`${match.participantB.label}のスコア`}
+														/>
+													</label>
+												</div>
+												<fieldset class="winner-options">
+													<legend>勝者</legend>
+													<label class="winner-option">
+														<input type="radio" name="winnerSide" value="a" required />
+														<span>{match.participantA.label}</span>
+													</label>
+													<label class="winner-option">
+														<input type="radio" name="winnerSide" value="b" required />
+														<span>{match.participantB.label}</span>
+													</label>
+												</fieldset>
+												{#if form?.error && currentFormMatchId === match.id}
+													<p class="form-error">{form.error}</p>
+												{/if}
+												<div class="match-actions">
+													<button type="submit" class="record-button">結果を保存</button>
+												</div>
+											</form>
+										{:else}
+											<p class="match-note">対戦カードが確定すると結果を入力できます。</p>
 										{/if}
 									</article>
 								{/each}
@@ -586,6 +726,174 @@
 	.status-badge.status-auto {
 		background: rgba(59, 130, 246, 0.18);
 		color: #1d4ed8;
+	}
+
+	.status-message {
+		margin: 0;
+		padding: 0.9rem 1.1rem;
+		border-radius: 0.85rem;
+		background: rgba(191, 219, 254, 0.6);
+		border: 1px solid rgba(59, 130, 246, 0.2);
+		color: #1d4ed8;
+		font-weight: 600;
+		box-shadow: 0 8px 20px rgba(37, 99, 235, 0.12);
+	}
+
+	.status-message.error {
+		background: rgba(254, 202, 202, 0.7);
+		border-color: rgba(239, 68, 68, 0.35);
+		color: #b91c1c;
+	}
+
+	.match-card.recently-updated {
+		border-color: rgba(37, 99, 235, 0.45);
+		box-shadow: 0 12px 30px rgba(37, 99, 235, 0.18);
+	}
+
+	.match-result {
+		margin: 0.75rem 0 0;
+		font-weight: 600;
+		color: #1e293b;
+		display: flex;
+		align-items: baseline;
+		gap: 0.5rem;
+	}
+
+	.match-result strong {
+		font-size: 1rem;
+		color: #1d4ed8;
+	}
+
+	.result-score {
+		font-size: 0.85rem;
+		color: #475569;
+		font-weight: 500;
+	}
+
+	.match-form {
+		margin-top: 1rem;
+		display: grid;
+		gap: 1rem;
+		background: rgba(248, 250, 252, 0.85);
+		padding: 0.9rem;
+		border-radius: 0.85rem;
+		border: 1px solid rgba(148, 163, 184, 0.2);
+	}
+
+	.score-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+		gap: 0.75rem;
+	}
+
+	.score-input-group {
+		display: grid;
+		gap: 0.35rem;
+	}
+
+	.score-input-group span {
+		font-size: 0.78rem;
+		color: #475569;
+		font-weight: 600;
+	}
+
+	.score-input-group input {
+		padding: 0.55rem 0.65rem;
+		border-radius: 0.65rem;
+		border: 1px solid rgba(148, 163, 184, 0.35);
+		background: white;
+		font-size: 0.95rem;
+		font-weight: 600;
+		color: #0f172a;
+	}
+
+	.score-input-group input:focus {
+		outline: none;
+		border-color: rgba(59, 130, 246, 0.65);
+		box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+	}
+
+	.winner-options {
+		display: grid;
+		gap: 0.5rem;
+		padding: 0;
+		margin: 0;
+		border: none;
+	}
+
+	.winner-options legend {
+		font-size: 0.78rem;
+		font-weight: 600;
+		color: #475569;
+		margin-bottom: 0.25rem;
+	}
+
+	.winner-option {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.55rem 0.65rem;
+		border-radius: 0.65rem;
+		border: 1px solid rgba(148, 163, 184, 0.28);
+		background: rgba(255, 255, 255, 0.9);
+		cursor: pointer;
+		transition: border-color 0.2s ease, box-shadow 0.2s ease;
+	}
+
+	.winner-option:hover {
+		border-color: rgba(59, 130, 246, 0.5);
+		box-shadow: 0 4px 12px rgba(37, 99, 235, 0.12);
+	}
+
+	.winner-option input {
+		accent-color: #1d4ed8;
+		width: 1rem;
+		height: 1rem;
+	}
+
+	.winner-option span {
+		font-weight: 600;
+		color: #1e293b;
+	}
+
+	.match-actions {
+		display: flex;
+		justify-content: flex-end;
+	}
+
+	.record-button {
+		padding: 0.6rem 1.15rem;
+		border-radius: 0.7rem;
+		border: none;
+		background: linear-gradient(135deg, #2563eb, #1d4ed8);
+		color: #fff;
+		font-weight: 600;
+		cursor: pointer;
+		transition: transform 0.15s ease, box-shadow 0.15s ease;
+	}
+
+	.record-button:hover {
+		transform: translateY(-1px);
+		box-shadow: 0 10px 22px rgba(37, 99, 235, 0.25);
+	}
+
+	.record-button:focus {
+		outline: none;
+		box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+	}
+
+	.form-error {
+		margin: 0;
+		font-size: 0.8rem;
+		font-weight: 600;
+		color: #b91c1c;
+	}
+
+	.match-note {
+		margin: 0.75rem 0 0;
+		font-size: 0.8rem;
+		color: #64748b;
+		font-weight: 500;
 	}
 
 	.participant {

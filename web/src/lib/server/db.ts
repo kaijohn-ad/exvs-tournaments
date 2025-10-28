@@ -72,6 +72,15 @@ export interface DatabaseContext {
 	};
 	bracketMatches: {
 		listBracketMatches(tournamentId: string): Promise<bracketMatchesMemory.BracketMatchRecord[]>;
+		ensureBracketMatch(
+			tournamentId: string,
+			matchId: string
+		): Promise<bracketMatchesMemory.BracketMatchRecord>;
+		updateBracketMatch(
+			tournamentId: string,
+			matchId: string,
+			data: bracketMatchesMemory.BracketMatchUpdateData
+		): Promise<bracketMatchesMemory.BracketMatchRecord>;
 		setBracketMatches(
 			tournamentId: string,
 			matches: bracketMatchesMemory.BracketMatchImportData[]
@@ -241,6 +250,16 @@ const wrapMemoryTeamBattles = () => ({
 const wrapMemoryBracketMatches = () => ({
 	async listBracketMatches(tournamentId: string) {
 		return bracketMatchesMemory.listBracketMatches(tournamentId);
+	},
+	async ensureBracketMatch(tournamentId: string, matchId: string) {
+		return bracketMatchesMemory.ensureBracketMatch(tournamentId, matchId);
+	},
+	async updateBracketMatch(
+		tournamentId: string,
+		matchId: string,
+		data: bracketMatchesMemory.BracketMatchUpdateData
+	) {
+		return bracketMatchesMemory.updateBracketMatch(tournamentId, matchId, data);
 	},
 	async setBracketMatches(tournamentId: string, matches: bracketMatchesMemory.BracketMatchImportData[]) {
 		return bracketMatchesMemory.setBracketMatches(tournamentId, matches);

@@ -2,8 +2,10 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
 	createBracketMatch,
 	deleteBracketMatches,
+	ensureBracketMatch,
 	listBracketMatches,
 	setBracketMatches,
+	updateBracketMatch,
 	__resetForTests
 } from './bracket-matches';
 
@@ -129,5 +131,68 @@ describe('bracket matches repository', () => {
 
 		expect(listBracketMatches('tournament-1')).toEqual([]);
 		expect(listBracketMatches('tournament-2')).toHaveLength(1);
+	});
+
+	it('ensureBracketMatch returns existing match and throws for missing', () => {
+		const created = createBracketMatch('tournament-ensure', {
+			round: 1,
+			position: 1,
+			participant_a_type: 'pair',
+			participant_a_pair_id: 'pair-a',
+			participant_b_type: 'pair',
+			participant_b_pair_id: 'pair-b'
+		});
+
+	const record = ensureBracketMatch('tournament-ensure', created.id);
+	expect(record.id).toBe(created.id);
+
+	expect(() =>
+		ensureBracketMatch('tournament-ensure', 'missing-match')
+	).toThrowError(/Bracket match not found/);
+});
+
+	it('updateBracketMatch mutates scores, status, participants and winner metadata', () => {
+		const created = createBracketMatch('tournament-update', {
+			round: 2,
+			position: 3,
+			participant_a_type: 'pair',
+			participant_a_pair_id: 'pair-a',
+			participant_b_type: 'pair',
+			participant_b_pair_id: 'pair-b'
+		});
+
+		const updated = updateBracketMatch('tournament-update', created.id, {
+			round: 3,
+			position: 2,
+			score_a: 3,
+			score_b: 1,
+			status: 'completed',
+			winner_side: 'a',
+			participant_a_type: 'pair',
+			participant_a_pair_id: ' pair-a ',
+			participant_b_type: 'bye',
+			participant_b_pair_id: 'should-be-ignored'
+		});
+
+		expect(updated).toMatchObject({
+			round: 3,
+			position: 2,
+			score_a: 3,
+			score_b: 1,
+			status: 'completed',
+			winner_side: 'a',
+			participant_a_type: 'pair',
+			participant_a_pair_id: 'pair-a',
+			participant_b_type: 'bye',
+			participant_b_pair_id: null
+		});
+
+		const stored = ensureBracketMatch('tournament-update', created.id);
+		expect(stored).toMatchObject({
+			round: 3,
+			position: 2,
+			status: 'completed',
+			winner_side: 'a'
+		});
 	});
 });
