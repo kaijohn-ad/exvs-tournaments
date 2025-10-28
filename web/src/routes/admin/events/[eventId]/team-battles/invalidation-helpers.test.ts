@@ -4,7 +4,8 @@ import { getInvalidateResource, shouldInvalidateTeamBattles } from './invalidati
 const createForm = (success: boolean) => ({
 	success,
 	type: success ? 'success' : 'error',
-	source: 'create'
+	source: 'create',
+	message: success ? '作成しました。' : 'エラーが発生しました。'
 });
 
 describe('invalidate helpers', () => {

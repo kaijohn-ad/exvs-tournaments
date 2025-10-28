@@ -13,6 +13,7 @@
 	let editorError: string | null = null;
 	let flashTimer: ReturnType<typeof setTimeout> | null = null;
 	let flashVisible = false;
+	let generatingTournamentId: string | null = null;
 
 	const importExample = JSON.stringify(
 		[
@@ -80,6 +81,10 @@
 			editorError = 'JSONの形式が正しくありません。';
 		}
 	};
+
+	$: if (form?.source === 'generate') {
+		generatingTournamentId = null;
+	}
 </script>
 
 <svelte:head>
@@ -136,32 +141,38 @@
 			<ul class="list">
 				{#each tournaments as tournament}
 					<li class="tournament-item">
-						<form method="POST" action="?/update" class="tournament-form">
-							<input type="hidden" name="tournamentId" value={tournament.id} />
+						<div class="tournament-card">
+								<form method="POST" action="?/update" class="tournament-form">
+								<input type="hidden" name="tournamentId" value={tournament.id} />
 
-							<label>
-								<span>トーナメント名</span>
-								<input name="name" value={tournament.name} required />
-							</label>
+								<label>
+									<span>トーナメント名</span>
+									<input name="name" value={tournament.name} required />
+								</label>
 
-							<label>
-								<span>形式</span>
-								<select name="format" bind:value={tournament.format}>
-									<option value="single-elimination">シングルエリミネーション</option>
-								</select>
-							</label>
+								<label>
+									<span>形式</span>
+									<select name="format" bind:value={tournament.format}>
+										<option value="single-elimination">シングルエリミネーション</option>
+									</select>
+								</label>
 
-							<label>
-								<span>シード方式</span>
-								<select name="seedingMode" bind:value={tournament.seedingMode}>
-									<option value="random">ランダム</option>
-									<option value="manual">手動</option>
-								</select>
-							</label>
+								<label>
+									<span>シード方式</span>
+									<select name="seedingMode" bind:value={tournament.seedingMode}>
+										<option value="random">ランダム</option>
+										<option value="manual">手動</option>
+									</select>
+								</label>
 
-							<div class="meta">
-								<span class="meta-item">作成日時: {new Date(tournament.createdAt).toLocaleString('ja-JP')}</span>
-							</div>
+								<div class="meta">
+									<span class="meta-item">作成日時: {new Date(tournament.createdAt).toLocaleString('ja-JP')}</span>
+								</div>
+
+								<div class="form-actions">
+									<button type="submit" class="secondary">更新</button>
+								</div>
+							</form>
 
 							<div class="row-actions">
 								<a
@@ -170,22 +181,42 @@
 								>
 									ブラケットを見る
 								</a>
-								<button type="submit" class="secondary">更新</button>
-								<button
-									type="submit"
-									formmethod="POST"
-									formaction="?/delete"
-									class="danger"
-									on:click={(event) => {
+								<form
+									method="POST"
+									action="?/generate"
+									class="generate-form"
+									on:submit={() => {
+										generatingTournamentId = tournament.id;
+									}}
+								>
+									<input type="hidden" name="tournamentId" value={tournament.id} />
+									<select name="seedingMode" aria-label="シード方式を選択" bind:value={tournament.seedingMode}>
+										<option value="random">ランダムで生成</option>
+										<option value="manual">手動シードで生成</option>
+									</select>
+									<button
+										type="submit"
+										class={`secondary ${generatingTournamentId === tournament.id ? 'loading' : ''}`}
+										disabled={generatingTournamentId !== null}
+									>
+										{generatingTournamentId === tournament.id ? '生成中…' : 'ブラケット生成'}
+									</button>
+								</form>
+								<form
+									method="POST"
+									action="?/delete"
+									class="delete-form"
+									on:submit={(event) => {
 										if (!confirm('削除しますか？')) {
 											event.preventDefault();
 										}
 									}}
 								>
-									削除
-								</button>
+									<input type="hidden" name="tournamentId" value={tournament.id} />
+									<button type="submit" class="danger">削除</button>
+								</form>
 							</div>
-						</form>
+						</div>
 					</li>
 				{/each}
 			</ul>

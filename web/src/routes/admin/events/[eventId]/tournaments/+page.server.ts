@@ -2,6 +2,7 @@ import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { getDatabase } from '$lib/server/db';
 import type { TournamentRecord } from '$lib/server/repositories/tournaments';
+import { generateAndStoreSingleEliminationBracket } from '$lib/server/repositories/bracket-generator';
 
 const normalizeText = (value: FormDataEntryValue | null): string | undefined => {
 	if (value == null) {
@@ -191,6 +192,76 @@ export const actions: Actions = {
 			message,
 			tournamentsJson,
 			tournaments: imported
+		};
+	},
+	generate: async (event) => {
+		const form = await event.request.formData();
+		const tournamentId = normalizeText(form.get('tournamentId'));
+		const seedingOverride = normalizeText(form.get('seedingMode')) as 'random' | 'manual' | undefined;
+
+		if (!tournamentId) {
+			return fail(400, {
+				type: 'error',
+				source: 'generate',
+				message: 'tournamentId が指定されていません。'
+			});
+		}
+
+		const eventId = event.params.eventId;
+		const db = getDatabase(event);
+
+		let tournament: TournamentRecord;
+		try {
+			tournament = await db.tournaments.ensureTournament(eventId, tournamentId);
+		} catch (error_) {
+			return fail(404, {
+				type: 'error',
+				source: 'generate',
+				message: '指定したトーナメントが見つかりません。',
+				tournamentId
+			});
+		}
+
+		const pairs = await db.pairs.listPairs(eventId);
+		if (pairs.length < 2) {
+			return fail(400, {
+				type: 'error',
+				source: 'generate',
+				message: 'ブラケットを生成するには、少なくとも2組のペアが必要です。',
+				tournamentId
+			});
+		}
+
+		const seedingMode = seedingOverride ?? tournament.seedingMode ?? 'random';
+		if (tournament.format && tournament.format !== 'single-elimination') {
+			return fail(400, {
+				type: 'error',
+				source: 'generate',
+				message: 'ブラケット生成はシングルエリミネーション形式でのみ利用できます。',
+				tournamentId
+			});
+		}
+
+		await generateAndStoreSingleEliminationBracket({
+			tournamentId,
+			pairs,
+			seedingMode,
+			setMatches: (targetTournamentId, matches) =>
+				db.bracketMatches.setBracketMatches(targetTournamentId, matches)
+		});
+
+		const tournaments = await db.tournaments.listTournaments(eventId);
+		const sortedTournaments = [...tournaments].sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+		const tournamentsJson = JSON.stringify(sortedTournaments, null, 2);
+
+		return {
+			success: true,
+			type: 'success',
+			source: 'generate',
+			message: `トーナメント「${tournament.name}」のブラケットを生成しました。`,
+			tournaments: sortedTournaments,
+			tournamentsJson,
+			tournamentId
 		};
 	}
 };

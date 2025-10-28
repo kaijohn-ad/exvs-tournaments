@@ -24,7 +24,7 @@ const createLoadEvent = (tournamentId: string) => {
 			delete: () => undefined,
 			serialize: () => ''
 		}
-	} as Parameters<typeof load>[0];
+	} as unknown as Parameters<typeof load>[0];
 };
 
 const createActionEvent = (params: { eventId: string; tournamentId: string }, formData?: FormData) => {
@@ -76,6 +76,9 @@ describe('admin tournaments bracket page load', () => {
 		]);
 
 		const result = await load(createLoadEvent(tournament.id));
+		if (!result) {
+			throw new Error('Expected load result');
+		}
 
 		expect(result.tournament.id).toBe(tournament.id);
 		expect(result.pairs).toHaveLength(2);

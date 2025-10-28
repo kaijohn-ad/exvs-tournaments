@@ -1,6 +1,6 @@
 # Boost Bracket TODO一覧
 
-最終更新: 2025-10-28 (Kai session - update 3)
+最終更新: 2025-10-28 (Kai session - update 4)
 
 ## ✅ 完了済み
 - [x] SvelteKit プロジェクト初期化と Cloudflare アダプタ設定
@@ -104,6 +104,11 @@
   - 各マッチの勝者選択とスコア入力フォーム
   - 次ラウンドへの自動進出およびステータスリセット制御
   - 結果ログ保存とプレイヤー統計反映、サーバーテスト整備
+- [x] トーナメント設定からのブラケット生成導線
+  - `/admin/events/{eventId}/tournaments` にブラケット生成アクションを追加
+  - `generateAndStoreSingleEliminationBracket` を用いて `bracket_matches` を登録
+  - ペア数不足／形式不一致時のバリデーションとエラー通知
+  - ブラケット生成後にステータスメッセージを表示し、ブラケットUIで結果入力を再確認
 
 ## 🚧 進行中
 なし

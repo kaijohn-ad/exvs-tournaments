@@ -391,29 +391,28 @@
 		font-weight: 600;
 	}
 
-	input,
-	textarea,
-	select {
-		padding: 0.65rem 0.75rem;
-		border-radius: 0.75rem;
-		border: 1px solid rgba(148, 163, 184, 0.6);
-		font-size: 1rem;
-		font-weight: 500;
-		color: #111827;
-		background: rgba(248, 250, 252, 0.6);
-	}
+input,
+textarea {
+	padding: 0.65rem 0.75rem;
+	border-radius: 0.75rem;
+	border: 1px solid rgba(148, 163, 184, 0.6);
+	font-size: 1rem;
+	font-weight: 500;
+	color: #111827;
+	background: rgba(248, 250, 252, 0.6);
+}
 
-	select {
-		cursor: pointer;
-	}
+input:focus,
+textarea:focus {
+	border-color: #2563eb;
+	outline: none;
+	box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
 
-	input:focus,
-	textarea:focus,
-	select:focus {
-		border-color: #2563eb;
-		outline: none;
-		box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
-	}
+button.secondary {
+	background: rgba(37, 99, 235, 0.1);
+	color: #1d4ed8;
+}
 
 	.actions,
 	.row-actions {

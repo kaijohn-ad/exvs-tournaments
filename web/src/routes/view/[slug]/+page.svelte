@@ -64,29 +64,6 @@
 		color: #64748b;
 	}
 
-	.tournament-list {
-		list-style: none;
-		padding: 0;
-		margin: 0;
-		display: grid;
-		gap: 0.75rem;
-	}
-
-	.tournament-list a {
-		display: block;
-		padding: 0.85rem 1.1rem;
-		border-radius: 0.75rem;
-		background: rgba(37, 99, 235, 0.08);
-		color: #1d4ed8;
-		text-decoration: none;
-		font-weight: 600;
-		transition: transform 0.2s ease, box-shadow 0.2s ease;
-	}
-
-	.tournament-list a:hover {
-		transform: translateY(-1px);
-		box-shadow: 0 8px 18px rgba(37, 99, 235, 0.18);
-	}
 
 	code {
 		font-family: 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
