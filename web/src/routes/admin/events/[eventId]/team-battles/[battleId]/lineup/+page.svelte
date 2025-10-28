@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { PageData, ActionData } from './$types';
 	import { invalidate } from '$app/navigation';
+	import { browser } from '$app/environment';
 
 	export let data: PageData;
 	export let form: ActionData;
@@ -95,7 +96,9 @@
 	$: if (form?.type) {
 		flashMessage = form.message || '';
 		flashVisible = true;
-		void invalidate(`lineup:${data.battleId}`);
+		if (browser) {
+			void invalidate(`lineup:${data.battleId}`);
+		}
 		setTimeout(() => {
 			flashVisible = false;
 		}, 4000);
