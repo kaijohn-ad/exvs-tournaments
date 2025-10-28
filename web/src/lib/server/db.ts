@@ -20,7 +20,7 @@ import { createMatchesRepositoryD1 } from './repositories/matches-d1';
 import { createBracketMatchesRepositoryD1 } from './repositories/bracket-matches-d1';
 import { createPlayerStatsRepositoryD1 } from './repositories/player-stats-d1';
 
-const USE_MEMORY = process.env.USE_MEMORY_STORE === 'true' || process.env.USE_MEMORY_STORE === undefined;
+const USE_MEMORY = true; // Force memory store for debugging
 
 export interface DatabaseContext {
 	events: {
@@ -389,6 +389,8 @@ export function getDatabase(event: RequestEvent): DatabaseContext {
 	}
 
 	const db = event.platform?.env?.DB;
+	console.log('Platform env:', event.platform?.env);
+	console.log('D1 database:', db);
 	if (!db) {
 		console.warn('D1 database not available, falling back to memory store');
 		return {
