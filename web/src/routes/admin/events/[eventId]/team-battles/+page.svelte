@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { PageData, ActionData } from './$types';
 	import { invalidate } from '$app/navigation';
+	import { browser } from '$app/environment';
 
 	export let data: PageData;
 	export let form: ActionData;
@@ -17,7 +18,7 @@
 			flashTimer = null;
 		}, 4000);
 		
-		if (form.success) {
+		if (form.success && browser) {
 			void invalidate(`team-battles:${data.eventId}`);
 		}
 	}

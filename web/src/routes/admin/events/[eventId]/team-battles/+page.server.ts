@@ -72,37 +72,58 @@ export const actions: Actions = {
 		}
 
 		const db = getDatabase(event);
-		
+
 		try {
 			await db.teams.ensureTeam(event.params.eventId, team_a_id);
 			await db.teams.ensureTeam(event.params.eventId, team_b_id);
 		} catch (error) {
-			return fail(404, { 
-				type: 'error', 
-				source: 'create', 
-				message: '指定されたチームが見つかりません。' 
+			console.error('[team-battles:create] team validation failed', {
+				eventId: event.params.eventId,
+				team_a_id,
+				team_b_id,
+				error
+			});
+			return fail(404, {
+				type: 'error',
+				source: 'create',
+				message: '指定されたチームが見つかりません。'
 			});
 		}
 
-		const battle = await db.teamBattles.createTeamBattle(event.params.eventId, {
-			team_a_id,
-			team_b_id,
-			slots_count,
-			format,
-			tiebreak
-		});
+		try {
+			const battle = await db.teamBattles.createTeamBattle(event.params.eventId, {
+				team_a_id,
+				team_b_id,
+				slots_count,
+				format,
+				tiebreak
+			});
 
-		const teams = await db.teams.listTeams(event.params.eventId);
-		const teamA = teams.find(t => t.id === team_a_id);
-		const teamB = teams.find(t => t.id === team_b_id);
+			const teams = await db.teams.listTeams(event.params.eventId);
+			const teamA = teams.find((t) => t.id === team_a_id);
+			const teamB = teams.find((t) => t.id === team_b_id);
 
-		return {
-			success: true,
-			type: 'success',
-			source: 'create',
-			message: `団体戦「${teamA?.name ?? 'チームA'} vs ${teamB?.name ?? 'チームB'}」を作成しました。`,
-			battle
-		};
+			return {
+				success: true,
+				type: 'success',
+				source: 'create',
+				message: `団体戦「${teamA?.name ?? 'チームA'} vs ${teamB?.name ?? 'チームB'}」を作成しました。`,
+				battle
+			};
+		} catch (error) {
+			console.error('[team-battles:create] failed', {
+				eventId: event.params.eventId,
+				team_a_id,
+				team_b_id,
+				error
+			});
+			return fail(500, {
+				type: 'error',
+				source: 'create',
+				message: '団体戦の作成中に内部エラーが発生しました。',
+				detail: error instanceof Error ? error.message : String(error)
+			});
+		}
 	},
 
 	update: async (event) => {
