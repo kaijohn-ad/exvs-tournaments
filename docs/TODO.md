@@ -124,7 +124,9 @@
 ### フレームワーク移行計画
 - [ ] **Phase 1: Remix + Cloudflare Workers** (推奨)
   - [x] Remixプロジェクトの作成とセットアップ（`remix/` ディレクトリに初期テンプレートを配置）
-  - [ ] Cloudflare Workersアダプターの設定
+  - [x] Cloudflare Workersアダプターの設定
+    - Remix `server.ts` を Cloudflare `ExecutionContext` と互換になるよう更新し、`AppLoadContext` に Workers の環境を安全に供給
+    - `vite.config.ts` で `cloudflareDevProxyVitePlugin` を開発モード限定にし、`remix vite:build` が Cloudflare Workers ターゲットで完了することを確認 (`npm run build`)
   - [ ] D1データベースの統合
   - [ ] 既存コードの移行（優先度: 高）
 - [ ] **Phase 2: Next.js + Vercel** (代替案)

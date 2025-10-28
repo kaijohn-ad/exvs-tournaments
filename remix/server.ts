@@ -19,10 +19,7 @@ export default {
 						// `cloudflareDevProxyVitePlugin`:
 						// https://developers.cloudflare.com/workers/wrangler/api/#getplatformproxy
 						cf: request.cf,
-						ctx: {
-							waitUntil: ctx.waitUntil.bind(ctx),
-							passThroughOnException: ctx.passThroughOnException.bind(ctx),
-						},
+						ctx,
 						caches,
 						env,
 					},

@@ -12,31 +12,39 @@ declare module "@remix-run/cloudflare" {
 	}
 }
 
-export default defineConfig({
-	plugins: [
-		cloudflareDevProxyVitePlugin({
-			getLoadContext,
-		}),
-		remix({
-			future: {
-				v3_fetcherPersist: true,
-				v3_relativeSplatPath: true,
-				v3_throwAbortReason: true,
-				v3_singleFetch: true,
-				v3_lazyRouteDiscovery: true,
+export default defineConfig(({ mode }) => {
+	const isDev = mode === "development";
+
+	return {
+		plugins: [
+			...(isDev
+				? [
+						cloudflareDevProxyVitePlugin({
+							getLoadContext,
+						}),
+					]
+				: []),
+			remix({
+				future: {
+					v3_fetcherPersist: true,
+					v3_relativeSplatPath: true,
+					v3_throwAbortReason: true,
+					v3_singleFetch: true,
+					v3_lazyRouteDiscovery: true,
+				},
+			}),
+			tsconfigPaths(),
+		],
+		ssr: {
+			resolve: {
+				conditions: ["workerd", "worker", "browser"],
 			},
-		}),
-		tsconfigPaths(),
-	],
-	ssr: {
-		resolve: {
-			conditions: ["workerd", "worker", "browser"],
 		},
-	},
-	resolve: {
-		mainFields: ["browser", "module", "main"],
-	},
-	build: {
-		minify: true,
-	},
+		resolve: {
+			mainFields: ["browser", "module", "main"],
+		},
+		build: {
+			minify: true,
+		},
+	};
 });
