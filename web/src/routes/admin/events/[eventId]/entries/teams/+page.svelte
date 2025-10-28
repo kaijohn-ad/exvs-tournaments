@@ -92,6 +92,10 @@
 		<p>イベントID: <code>{data?.eventId ?? '(unknown)'}</code></p>
 	</header>
 
+	<nav class="back-link">
+		<a href="/admin">← 管理トップに戻る</a>
+	</nav>
+
 	<section class="card">
 		<h2>チームを追加</h2>
 		{#if flashVisible && form?.type === 'error' && form?.source === 'create'}
@@ -488,6 +492,21 @@
 		margin: 0;
 		color: #475569;
 		font-size: 0.9rem;
+	}
+
+	.back-link {
+		margin-top: -0.5rem;
+		margin-bottom: 0.5rem;
+	}
+
+	.back-link a {
+		color: #3b82f6;
+		font-weight: 600;
+		text-decoration: none;
+	}
+
+	.back-link a:hover {
+		text-decoration: underline;
 	}
 
 	a.secondary {

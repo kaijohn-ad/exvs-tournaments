@@ -16,79 +16,126 @@ export interface TeamBattleSlotRecord extends TeamBattleSlotData {
 	id: string;
 }
 
-export interface SlotResultData {
-	slot_index: number;
-	winner_team_id: string;
-	score_a: number;
-	score_b: number;
-}
+const store = new Map<string, Map<string, TeamBattleSlotRecord>>();
 
-const store = new Map<string, TeamBattleSlotRecord>();
+const getBattleStore = (battleId: string) => {
+	let battleStore = store.get(battleId);
 
-export const listSlotsByBattle = (battleId: string): TeamBattleSlotRecord[] => {
-	return Array.from(store.values())
-		.filter(slot => slot.team_battle_id === battleId)
-		.sort((a, b) => {
-			if (a.team_id !== b.team_id) {
-				return a.team_id.localeCompare(b.team_id);
-			}
-			return a.slot_index - b.slot_index;
-		});
+	if (!battleStore) {
+		battleStore = new Map();
+		store.set(battleId, battleStore);
+	}
+
+	return battleStore;
 };
 
-export const createSlot = (data: TeamBattleSlotData): TeamBattleSlotRecord => {
+export const listTeamBattleSlots = (battleId: string): TeamBattleSlotRecord[] => {
+	const battleStore = getBattleStore(battleId);
+	return Array.from(battleStore.values()).sort((a, b) => {
+		if (a.team_id !== b.team_id) {
+			return a.team_id.localeCompare(b.team_id);
+		}
+		return a.slot_index - b.slot_index;
+	});
+};
+
+export const listTeamBattleSlotsByTeam = (
+	battleId: string,
+	teamId: string
+): TeamBattleSlotRecord[] => {
+	const battleStore = getBattleStore(battleId);
+	return Array.from(battleStore.values())
+		.filter((slot) => slot.team_id === teamId)
+		.sort((a, b) => a.slot_index - b.slot_index);
+};
+
+export const createTeamBattleSlot = (data: TeamBattleSlotData): TeamBattleSlotRecord => {
+	const battleStore = getBattleStore(data.team_battle_id);
 	const id = crypto.randomUUID();
+
 	const record: TeamBattleSlotRecord = {
 		id,
-		...data
+		team_battle_id: data.team_battle_id,
+		team_id: data.team_id,
+		slot_index: data.slot_index,
+		assignment_type: data.assignment_type,
+		pair_id: data.pair_id,
+		player1_id: data.player1_id,
+		player2_id: data.player2_id
 	};
-	store.set(id, record);
+
+	battleStore.set(id, record);
 	return record;
 };
 
-export const ensureSlot = (slotId: string): TeamBattleSlotRecord => {
-	const record = store.get(slotId);
+export const ensureTeamBattleSlot = (
+	battleId: string,
+	slotId: string
+): TeamBattleSlotRecord => {
+	const battleStore = getBattleStore(battleId);
+	const record = battleStore.get(slotId);
+
 	if (!record) {
 		throw new Error('Team battle slot not found');
 	}
+
 	return record;
 };
 
-export const updateSlot = (slotId: string, data: TeamBattleSlotData): TeamBattleSlotRecord => {
-	ensureSlot(slotId);
+export const updateTeamBattleSlot = (
+	battleId: string,
+	slotId: string,
+	data: TeamBattleSlotData
+): TeamBattleSlotRecord => {
+	const existing = ensureTeamBattleSlot(battleId, slotId);
+	const battleStore = getBattleStore(battleId);
+
 	const updated: TeamBattleSlotRecord = {
-		id: slotId,
-		...data
+		...existing,
+		team_id: data.team_id,
+		slot_index: data.slot_index,
+		assignment_type: data.assignment_type,
+		pair_id: data.pair_id,
+		player1_id: data.player1_id,
+		player2_id: data.player2_id
 	};
-	store.set(slotId, updated);
+
+	battleStore.set(slotId, updated);
 	return updated;
 };
 
-export const deleteSlot = (slotId: string): void => {
-	ensureSlot(slotId);
-	store.delete(slotId);
-};
+export const deleteTeamBattleSlot = (battleId: string, slotId: string): void => {
+	ensureTeamBattleSlot(battleId, slotId);
+	const battleStore = getBattleStore(battleId);
+	battleStore.delete(slotId);
 
-export const deleteSlotsByBattle = (battleId: string): void => {
-	const slots = listSlotsByBattle(battleId);
-	for (const slot of slots) {
-		store.delete(slot.id);
+	if (battleStore.size === 0) {
+		store.delete(battleId);
 	}
 };
 
-export const setSlots = (slots: TeamBattleSlotImportData[]): TeamBattleSlotRecord[] => {
-	store.clear();
+export const deleteTeamBattleSlotsByBattle = (battleId: string): void => {
+	store.delete(battleId);
+};
+
+export const setTeamBattleSlots = (
+	battleId: string,
+	slots: TeamBattleSlotImportData[]
+): TeamBattleSlotRecord[] => {
+	const battleStore = getBattleStore(battleId);
+	battleStore.clear();
+
 	const results: TeamBattleSlotRecord[] = [];
 
 	for (const slot of slots) {
-		if (!slot.team_battle_id || !slot.team_id) {
+		if (!slot.team_id || slot.slot_index === undefined) {
 			continue;
 		}
 
 		const id = slot.id ?? crypto.randomUUID();
 		const record: TeamBattleSlotRecord = {
 			id,
-			team_battle_id: slot.team_battle_id,
+			team_battle_id: battleId,
 			team_id: slot.team_id,
 			slot_index: slot.slot_index,
 			assignment_type: slot.assignment_type,
@@ -97,8 +144,107 @@ export const setSlots = (slots: TeamBattleSlotImportData[]): TeamBattleSlotRecor
 			player2_id: slot.player2_id
 		};
 
-		store.set(id, record);
+		battleStore.set(id, record);
 		results.push(record);
+	}
+
+	return results.sort((a, b) => {
+		if (a.team_id !== b.team_id) {
+			return a.team_id.localeCompare(b.team_id);
+		}
+		return a.slot_index - b.slot_index;
+	});
+};
+
+const findSlotEntry = (slotId: string) => {
+	for (const [battleId, battleStore] of store.entries()) {
+		const record = battleStore.get(slotId);
+		if (record) {
+			return { battleId, record };
+		}
+	}
+	return null;
+};
+
+export const listSlotsByBattle = (battleId: string): TeamBattleSlotRecord[] => {
+	return listTeamBattleSlots(battleId);
+};
+
+export const createSlot = (data: TeamBattleSlotData): TeamBattleSlotRecord => {
+	return createTeamBattleSlot(data);
+};
+
+export const ensureSlot = (slotId: string): TeamBattleSlotRecord => {
+	const entry = findSlotEntry(slotId);
+	if (!entry) {
+		throw new Error('Team battle slot not found');
+	}
+	return entry.record;
+};
+
+export const updateSlot = (slotId: string, data: TeamBattleSlotData): TeamBattleSlotRecord => {
+	const current = findSlotEntry(slotId);
+	if (!current) {
+		throw new Error('Team battle slot not found');
+	}
+
+	if (current.battleId !== data.team_battle_id) {
+		const oldStore = getBattleStore(current.battleId);
+		oldStore.delete(slotId);
+	}
+
+	const battleStore = getBattleStore(data.team_battle_id);
+	const updated: TeamBattleSlotRecord = {
+		id: slotId,
+		team_battle_id: data.team_battle_id,
+		team_id: data.team_id,
+		slot_index: data.slot_index,
+		assignment_type: data.assignment_type,
+		pair_id: data.pair_id,
+		player1_id: data.player1_id,
+		player2_id: data.player2_id
+	};
+
+	battleStore.set(slotId, updated);
+	return updated;
+};
+
+export const deleteSlot = (slotId: string): void => {
+	const entry = findSlotEntry(slotId);
+	if (!entry) {
+		throw new Error('Team battle slot not found');
+	}
+
+	const battleStore = getBattleStore(entry.battleId);
+	battleStore.delete(slotId);
+
+	if (battleStore.size === 0) {
+		store.delete(entry.battleId);
+	}
+};
+
+export const deleteSlotsByBattle = (battleId: string): void => {
+	deleteTeamBattleSlotsByBattle(battleId);
+};
+
+export const setSlots = (slots: TeamBattleSlotImportData[]): TeamBattleSlotRecord[] => {
+	store.clear();
+	const results: TeamBattleSlotRecord[] = [];
+
+	const grouped = new Map<string, TeamBattleSlotImportData[]>();
+
+	for (const slot of slots) {
+		if (!slot.team_battle_id || !slot.team_id) {
+			continue;
+		}
+
+		const battleSlots = grouped.get(slot.team_battle_id) ?? [];
+		battleSlots.push(slot);
+		grouped.set(slot.team_battle_id, battleSlots);
+	}
+
+	for (const [battleId, battleSlots] of grouped.entries()) {
+		results.push(...setTeamBattleSlots(battleId, battleSlots));
 	}
 
 	return results;
