@@ -7,6 +7,7 @@ import * as teamsMemory from './repositories/teams';
 import * as teamBattlesMemory from './repositories/team-battles';
 import * as teamBattleSlotsMemory from './repositories/team-battle-slots';
 import * as matchesMemory from './repositories/matches';
+import * as bracketMatchesMemory from './repositories/bracket-matches';
 import * as playerStatsMemory from './repositories/player-stats';
 import { createEventsRepositoryD1 } from './repositories/events-d1';
 import { createPlayersRepositoryD1 } from './repositories/players-d1';
@@ -16,6 +17,7 @@ import { createTeamsRepositoryD1 } from './repositories/teams-d1';
 import { createTeamBattlesRepositoryD1 } from './repositories/team-battles-d1';
 import { createTeamBattleSlotsRepositoryD1 } from './repositories/team-battle-slots-d1';
 import { createMatchesRepositoryD1 } from './repositories/matches-d1';
+import { createBracketMatchesRepositoryD1 } from './repositories/bracket-matches-d1';
 import { createPlayerStatsRepositoryD1 } from './repositories/player-stats-d1';
 
 const USE_MEMORY = process.env.USE_MEMORY_STORE === 'true' || process.env.USE_MEMORY_STORE === undefined;
@@ -67,6 +69,14 @@ export interface DatabaseContext {
 		updateTeamBattle(eventId: string, battleId: string, data: teamBattlesMemory.TeamBattleData): Promise<teamBattlesMemory.TeamBattleRecord>;
 		deleteTeamBattle(eventId: string, battleId: string): Promise<void>;
 		setTeamBattles(eventId: string, battles: teamBattlesMemory.TeamBattleImportData[]): Promise<teamBattlesMemory.TeamBattleRecord[]>;
+	};
+	bracketMatches: {
+		listBracketMatches(tournamentId: string): Promise<bracketMatchesMemory.BracketMatchRecord[]>;
+		setBracketMatches(
+			tournamentId: string,
+			matches: bracketMatchesMemory.BracketMatchImportData[]
+		): Promise<bracketMatchesMemory.BracketMatchRecord[]>;
+		deleteBracketMatches(tournamentId: string): Promise<void>;
 	};
 	teamBattleSlots: {
 		listTeamBattleSlots(battleId: string): Promise<teamBattleSlotsMemory.TeamBattleSlotRecord[]>;
@@ -228,6 +238,18 @@ const wrapMemoryTeamBattles = () => ({
 	}
 });
 
+const wrapMemoryBracketMatches = () => ({
+	async listBracketMatches(tournamentId: string) {
+		return bracketMatchesMemory.listBracketMatches(tournamentId);
+	},
+	async setBracketMatches(tournamentId: string, matches: bracketMatchesMemory.BracketMatchImportData[]) {
+		return bracketMatchesMemory.setBracketMatches(tournamentId, matches);
+	},
+	async deleteBracketMatches(tournamentId: string) {
+		return bracketMatchesMemory.deleteBracketMatches(tournamentId);
+	}
+});
+
 const wrapMemoryTeamBattleSlots = () => ({
 	async listTeamBattleSlots(battleId: string) {
 		return teamBattleSlotsMemory.listTeamBattleSlots(battleId);
@@ -340,6 +362,7 @@ export function getDatabase(event: RequestEvent): DatabaseContext {
 			pairs: wrapMemoryPairs(),
 			teams: wrapMemoryTeams(),
 			teamBattles: wrapMemoryTeamBattles(),
+			bracketMatches: wrapMemoryBracketMatches(),
 			teamBattleSlots: wrapMemoryTeamBattleSlots(),
 			matches: wrapMemoryMatches(),
 			playerStats: wrapMemoryPlayerStats()
@@ -355,6 +378,7 @@ export function getDatabase(event: RequestEvent): DatabaseContext {
 			pairs: wrapMemoryPairs(),
 			teams: wrapMemoryTeams(),
 			teamBattles: wrapMemoryTeamBattles(),
+			bracketMatches: wrapMemoryBracketMatches(),
 			teamBattleSlots: wrapMemoryTeamBattleSlots(),
 			matches: wrapMemoryMatches(),
 			playerStats: wrapMemoryPlayerStats()
@@ -368,6 +392,7 @@ export function getDatabase(event: RequestEvent): DatabaseContext {
 		pairs: createPairsRepositoryD1(db),
 		teams: createTeamsRepositoryD1(db),
 		teamBattles: createTeamBattlesRepositoryD1(db),
+		bracketMatches: createBracketMatchesRepositoryD1(db),
 		teamBattleSlots: createTeamBattleSlotsRepositoryD1(db),
 		matches: createMatchesRepositoryD1(db),
 		playerStats: createPlayerStatsRepositoryD1(db)
@@ -382,6 +407,7 @@ export function resetForTests() {
 		pairsMemory.__resetForTests();
 		teamsMemory.__resetForTests();
 		teamBattlesMemory.__resetForTests();
+		bracketMatchesMemory.__resetForTests();
 		teamBattleSlotsMemory.__resetForTests();
 		matchesMemory.__resetForTests();
 		playerStatsMemory.__resetForTests();

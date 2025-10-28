@@ -164,6 +164,12 @@
 							</div>
 
 							<div class="row-actions">
+								<a
+									class="button-link"
+									href={`/admin/events/${data.eventId}/tournaments/${tournament.id}/bracket`}
+								>
+									ブラケットを見る
+								</a>
 								<button type="submit" class="secondary">更新</button>
 								<button
 									type="submit"
@@ -355,6 +361,25 @@
 	button:hover {
 		transform: translateY(-1px);
 		box-shadow: 0 10px 20px rgba(15, 23, 42, 0.12);
+	}
+
+	.button-link {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		padding: 0.55rem 1.25rem;
+		border-radius: 9999px;
+		font-weight: 600;
+		text-decoration: none;
+		background: rgba(59, 130, 246, 0.12);
+		color: #1d4ed8;
+		border: 1px solid rgba(59, 130, 246, 0.2);
+		transition: transform 0.2s ease, box-shadow 0.2s ease;
+	}
+
+	.button-link:hover {
+		transform: translateY(-1px);
+		box-shadow: 0 8px 18px rgba(37, 99, 235, 0.2);
 	}
 
 	button.primary {
