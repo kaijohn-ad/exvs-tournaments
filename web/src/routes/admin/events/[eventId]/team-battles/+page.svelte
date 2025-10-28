@@ -87,8 +87,13 @@
 
 <section class="container">
 	<header class="section-header">
-		<h1>団体戦管理</h1>
-		<p>イベントID: <code>{data?.eventId ?? '(unknown)'}</code></p>
+		<div class="header-main">
+			<h1>団体戦管理</h1>
+			<p>イベントID: <code>{data?.eventId ?? '(unknown)'}</code></p>
+		</div>
+		<nav class="header-actions">
+			<a class="back-link" href="/admin">← 管理トップに戻る</a>
+		</nav>
 	</header>
 
 	<section class="card">
@@ -322,6 +327,27 @@
 	.section-header p {
 		margin: 0.25rem 0 0;
 		color: #6b7280;
+	}
+
+	.header-main {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+
+	.header-actions {
+		display: flex;
+		align-items: center;
+	}
+
+	.back-link {
+		color: #2563eb;
+		text-decoration: none;
+		font-weight: 600;
+	}
+
+	.back-link:hover {
+		text-decoration: underline;
 	}
 
 	.status-message {
