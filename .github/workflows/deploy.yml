@@ -13,35 +13,32 @@ jobs:
     
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version-file: 'web/.nvmrc'
+        node-version: '20.19.0'
         cache: 'npm'
-        cache-dependency-path: 'web/package-lock.json'
-    
+        cache-dependency-path: 'remix/package-lock.json'
+
     - name: Install dependencies
-      working-directory: ./web
+      working-directory: ./remix
       run: npm ci
-    
-    - name: Run type check
-      working-directory: ./web
-      run: npm run check
-    
-    - name: Run tests
-      working-directory: ./web
-      run: npm run test
-    
-    - name: Build
-      working-directory: ./web
+
+    - name: Type check
+      working-directory: ./remix
+      run: npm run typecheck
+
+    - name: Build Remix app
+      working-directory: ./remix
       run: npm run build
-    
+
     - name: Deploy to Cloudflare Pages
       uses: cloudflare/pages-action@v1
       with:
         apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         projectName: exvs-tournaments
-        directory: web/.svelte-kit/cloudflare
+        directory: remix/build/client
+        wranglerConfigPath: remix/wrangler.toml
         gitHubToken: ${{ secrets.GITHUB_TOKEN }}
