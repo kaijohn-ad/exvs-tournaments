@@ -51,7 +51,7 @@ The D1 database binding is automatically configured through `wrangler.toml`.
 ```bash
 cd web
 npm run build
-npx wrangler pages deploy .svelte-kit/cloudflare --project-name=exvs-tournaments
+npx wrangler pages deploy remix/build/client --project-name=exvs-tournaments
 ```
 
 ## Automated Deployment (CI/CD)
@@ -110,7 +110,7 @@ Configure these secrets in your GitHub repository settings:
    ```bash
    cd web
    npm run build
-   npx wrangler pages deploy .svelte-kit/cloudflare --project-name=exvs-tournaments
+  npx wrangler pages deploy remix/build/client --project-name=exvs-tournaments
    ```
 
 ## Database Migrations
