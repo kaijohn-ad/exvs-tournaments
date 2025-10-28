@@ -805,6 +805,8 @@
 		font-size: 0.95rem;
 		font-weight: 600;
 		color: #0f172a;
+		width: 100%;
+		box-sizing: border-box;
 	}
 
 	.score-input-group input:focus {

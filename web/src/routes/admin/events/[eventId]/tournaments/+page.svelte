@@ -93,8 +93,13 @@
 
 <section class="container">
 	<header class="section-header">
-		<h1>トーナメント設定</h1>
-		<p>イベントID: <code>{data?.eventId ?? '(unknown)'}</code></p>
+		<div class="section-header__titles">
+			<h1>トーナメント設定</h1>
+			<p>イベントID: <code>{data?.eventId ?? '(unknown)'}</code></p>
+		</div>
+		<nav class="section-header__actions">
+			<a class="back-link" href={`/admin/events/${data.eventId}`}>← イベント詳細に戻る</a>
+		</nav>
 	</header>
 
 	<section class="card">
@@ -315,6 +320,39 @@
 	.section-header h1 {
 		margin: 0;
 		font-size: 2rem;
+	}
+
+	.section-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: flex-start;
+		gap: 1rem;
+	}
+
+	.section-header__titles {
+		display: grid;
+		gap: 0.25rem;
+	}
+
+	.section-header__actions {
+		display: flex;
+		align-items: center;
+	}
+
+	.back-link {
+		font-weight: 600;
+		color: #1d4ed8;
+		text-decoration: none;
+		padding: 0.35rem 0.75rem;
+		border-radius: 9999px;
+		border: 1px solid rgba(59, 130, 246, 0.25);
+		background: rgba(59, 130, 246, 0.12);
+		transition: transform 0.2s ease, box-shadow 0.2s ease;
+	}
+
+	.back-link:hover {
+		transform: translateY(-1px);
+		box-shadow: 0 8px 18px rgba(37, 99, 235, 0.18);
 	}
 
 	.section-header p {

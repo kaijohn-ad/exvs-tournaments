@@ -157,10 +157,21 @@ const assignRandomSeedingSlots = (pairs: PairRecord[], size: number, rng: Rng): 
 	}
 
 	const seedOrder = generateSeedOrder(size);
+	const seedPositionMap = new Map<number, number>();
+	seedOrder.forEach((seed, index) => {
+		seedPositionMap.set(seed, index);
+	});
+
 	const shuffled = shuffle(pairs, rng);
 
-	for (let i = 0; i < shuffled.length && i < seedOrder.length; i += 1) {
-		const slotIndex = i;
+	for (let i = 0; i < shuffled.length; i += 1) {
+		const seedNumber = i + 1;
+		const slotIndex = seedPositionMap.get(seedNumber);
+
+		if (slotIndex === undefined) {
+			continue;
+		}
+
 		slots[slotIndex] = shuffled[i].id;
 	}
 
