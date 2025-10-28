@@ -4,7 +4,9 @@ A web application for managing and displaying small-scale EXVS (Extreme VS) Infi
 
 ## Quick Start
 
-See the `web/` directory for the main application.
+See the `web/` directory for the current SvelteKit application.
+
+The in-progress Remix migration lives in `remix/` (Phase 1 of the framework migration plan). Refer to `remix/README.md` for its development workflow.
 
 ## Development
 

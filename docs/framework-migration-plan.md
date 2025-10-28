@@ -88,6 +88,7 @@ SvelteKit + Cloudflare Pagesの組み合わせで以下の問題が発生：
 - **期間**: 2-3週間
 - **目標**: 現在の問題を解決し、安定したアプリケーションを構築
 - **メリット**: 既存のCloudflareインフラを活用
+- **進捗 (2025-10-28)**: Cloudflare Workers向けRemixスターターを `remix/` ディレクトリに作成済み。`npm run dev` などの基本コマンドは `remix/README.md` を参照。
 
 ### Phase 2: Next.js + Vercel（代替案）
 - **期間**: 3-4週間
