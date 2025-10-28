@@ -112,11 +112,11 @@ describe('generateSingleEliminationBracketMatches', () => {
 		expect(matches).toHaveLength(3);
 		expect(matches[0]).toMatchObject({
 			participant_a_pair_id: 'pair-4',
-			participant_b_pair_id: 'pair-2'
+			participant_b_pair_id: 'pair-3'
 		});
 		expect(matches[1]).toMatchObject({
-			participant_a_pair_id: 'pair-1',
-			participant_b_pair_id: 'pair-3'
+			participant_a_pair_id: 'pair-2',
+			participant_b_pair_id: 'pair-1'
 		});
 	});
 });
