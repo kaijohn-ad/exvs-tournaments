@@ -390,6 +390,28 @@ export function getDatabase(event: RequestEvent): DatabaseContext {
 
 	const db = event.platform?.env?.DB;
 	if (!db) {
+		console.warn('D1 database not available, falling back to memory store');
+		return {
+			events: wrapMemoryEvents(),
+			players: wrapMemoryPlayers(),
+			tournaments: wrapMemoryTournaments(),
+			pairs: wrapMemoryPairs(),
+			teams: wrapMemoryTeams(),
+			teamBattles: wrapMemoryTeamBattles(),
+			bracketMatches: wrapMemoryBracketMatches(),
+			teamBattleSlots: wrapMemoryTeamBattleSlots(),
+			matches: wrapMemoryMatches(),
+			playerStats: wrapMemoryPlayerStats()
+		};
+	}
+
+	// Validate D1 database connection
+	try {
+		if (typeof db.prepare !== 'function') {
+			throw new Error('Invalid D1 database connection');
+		}
+	} catch (error) {
+		console.error('D1 database connection validation failed:', error);
 		return {
 			events: wrapMemoryEvents(),
 			players: wrapMemoryPlayers(),
