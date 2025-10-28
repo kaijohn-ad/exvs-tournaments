@@ -1,6 +1,6 @@
 # Boost Bracket TODO一覧
 
-最終更新: 2025-10-28 (Kai session - update 5)
+最終更新: 2025-10-29 (Kai session - update 6)
 
 ## ✅ 完了済み
 - [x] SvelteKit プロジェクト初期化と Cloudflare アダプタ設定
@@ -113,11 +113,38 @@
   - `/events/{eventId}/tournaments/{tournamentId}/bracket` の公開読み取り専用ビューを実装
   - 自動更新ON/OFF切替と手動リフレッシュボタン、5秒ポーリングに対応
   - モバイルレイアウトと観戦向けスタイル調整、Vitestでロードハンドラを検証
+- [x] Cloudflare Pages デプロイ問題の調査と分析
+  - SvelteKit + Cloudflare Pages の相性問題を特定
+  - `TypeError: Cannot read properties of null (reading 'transport')` エラーの原因分析
+  - 代替フレームワーク・デプロイプラットフォームの調査完了
+  - 移行計画の策定とドキュメント化
 
 ## 🚧 進行中
-なし
+
+### フレームワーク移行計画
+- [ ] **Phase 1: Remix + Cloudflare Workers** (推奨)
+  - [ ] Remixプロジェクトの作成とセットアップ
+  - [ ] Cloudflare Workersアダプターの設定
+  - [ ] D1データベースの統合
+  - [ ] 既存コードの移行（優先度: 高）
+- [ ] **Phase 2: Next.js + Vercel** (代替案)
+  - [ ] Next.jsプロジェクトの作成
+  - [ ] Vercelへのデプロイ設定
+  - [ ] データベースの移行（PlanetScale等）
+  - [ ] 既存コードの移行（優先度: 中）
+- [ ] **Phase 3: SvelteKit + Vercel** (最小限の変更)
+  - [ ] Vercelアカウントの作成
+  - [ ] SvelteKitプロジェクトの設定変更
+  - [ ] データベースの移行
+  - [ ] デプロイ設定（優先度: 低）
 
 ## 📝 着手予定
+
+### 優先度最高：フレームワーク移行（Cloudflare Pages問題解決）
+- [ ] **Remix + Cloudflare Workers** への移行開始
+  - [ ] 既存コードの分析と移行計画の詳細化
+  - [ ] プロトタイプの作成とテスト
+  - [ ] 本格的な移行作業の開始
 
 ### 優先度高：トーナメントブラケット機能
 ### 優先度中：公開ビューの完成

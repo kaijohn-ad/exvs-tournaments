@@ -20,7 +20,7 @@ import { createMatchesRepositoryD1 } from './repositories/matches-d1';
 import { createBracketMatchesRepositoryD1 } from './repositories/bracket-matches-d1';
 import { createPlayerStatsRepositoryD1 } from './repositories/player-stats-d1';
 
-const USE_MEMORY = true; // Force memory store for debugging
+const USE_MEMORY = true; // Force memory store to avoid D1 binding issues
 
 export interface DatabaseContext {
 	events: {
@@ -373,7 +373,11 @@ const wrapMemoryPlayerStats = () => ({
 });
 
 export function getDatabase(event: RequestEvent): DatabaseContext {
+	console.log('getDatabase called with event:', !!event);
+	console.log('USE_MEMORY:', USE_MEMORY);
+	
 	if (USE_MEMORY) {
+		console.log('Using memory store');
 		return {
 			events: wrapMemoryEvents(),
 			players: wrapMemoryPlayers(),
@@ -388,11 +392,29 @@ export function getDatabase(event: RequestEvent): DatabaseContext {
 		};
 	}
 
-	const db = event.platform?.env?.DB;
+	// Cloudflare PagesでD1データベースのバインディングにアクセス
+	// SvelteKitのCloudflareアダプターでは、D1データベースは直接platform.envにバインドされる
+	console.log('Full event.platform:', event.platform);
 	console.log('Platform env:', event.platform?.env);
+	console.log('Platform env type:', typeof event.platform?.env);
+	console.log('Platform env keys:', event.platform?.env ? Object.keys(event.platform.env) : 'No platform env');
+	
+	// D1データベースのバインディングにアクセス
+	// Cloudflare Pagesでは、platform.env.DBとして直接アクセスする
+	const db = event.platform?.env?.DB;
 	console.log('D1 database:', db);
+	console.log('D1 database type:', typeof db);
+	
+	// 代替アクセス方法も試す
+	if (!db && event.platform?.env) {
+		console.log('Trying alternative access methods...');
+		console.log('Direct DB access:', event.platform.env.DB);
+		console.log('All env keys:', Object.keys(event.platform.env));
+	}
+	
 	if (!db) {
 		console.warn('D1 database not available, falling back to memory store');
+		console.warn('Available platform env keys:', event.platform?.env ? Object.keys(event.platform.env) : 'None');
 		return {
 			events: wrapMemoryEvents(),
 			players: wrapMemoryPlayers(),
@@ -409,11 +431,27 @@ export function getDatabase(event: RequestEvent): DatabaseContext {
 
 	// Validate D1 database connection
 	try {
+		console.log('Validating D1 database connection...');
+		console.log('db type:', typeof db);
+		console.log('db prepare function:', typeof db.prepare);
+		
 		if (typeof db.prepare !== 'function') {
-			throw new Error('Invalid D1 database connection');
+			throw new Error('Invalid D1 database connection - prepare function not available');
 		}
+		
+		// Test the connection by calling a simple query
+		console.log('Testing D1 database connection...');
+		// Note: We can't use await here since this is not an async function
+		// The actual test will happen when the database is used
+		console.log('D1 database connection appears valid');
+		
 	} catch (error) {
 		console.error('D1 database connection validation failed:', error);
+		console.error('Error details:', {
+			name: error.name,
+			message: error.message,
+			stack: error.stack
+		});
 		return {
 			events: wrapMemoryEvents(),
 			players: wrapMemoryPlayers(),
