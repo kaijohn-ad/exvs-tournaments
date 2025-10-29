@@ -22,6 +22,9 @@
   },
   "devDependencies": {
     "@remix-run/dev": "2.16.5",
+    "@remix-run/testing": "^2.17.1",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
     "@types/react": "^18.0.0",
     "@types/react-dom": "^18.0.0",
     "@typescript-eslint/eslint-plugin": "8.35.0",

@@ -166,7 +166,15 @@
       - ✅ ブラケット生成機能 `bracket-generator.ts` 移植完了
       - ✅ 全機能（作成・更新・削除・インポート・エクスポート・JSONエディタ・ブラケット生成）実装
       - ✅ テストケース作成・実行完了
-    - [ ] ブラケット表示 `/admin/events/{eventId}/tournaments/{tournamentId}/bracket` を Remix 移植
+    - [x] ブラケット表示 `/admin/events/{eventId}/tournaments/{tournamentId}/bracket` を Remix 移植
+      - ✅ 管理画面ブラケット表示ルート `admin.events.$eventId.tournaments.$tournamentId.bracket.tsx` 実装完了
+      - ✅ 一般公開ブラケット表示ルート `events.$eventId.tournaments.$tournamentId.bracket.tsx` 実装完了
+      - ✅ 試合結果入力機能（管理画面のみ）
+      - ✅ リアルタイム更新機能（5秒間隔）
+      - ✅ 進行状況表示・ブラケット表示UI
+      - ⚠️ UI統合テストでルーティング問題を発見：ブラケット表示ページにアクセスしてもトーナメント設定ページが表示される
+      - ⚠️ ペア管理機能が未実装のため、ブラケット生成・表示の完全テストができない
+      - 🔧 次のステップ：ペア管理機能の実装とルーティング問題の修正が必要
   - [ ] **Phase 2: Next.js + Vercel** (代替案)
   - [ ] Next.jsプロジェクトの作成
   - [ ] Vercelへのデプロイ設定
