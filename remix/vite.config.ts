@@ -46,5 +46,11 @@ export default defineConfig(({ mode }) => {
 		build: {
 			minify: true,
 		},
+		test: {
+			globals: true,
+			environment: "node",
+			setupFiles: ["./vitest.setup.ts"],
+			css: true,
+		},
 	};
 });

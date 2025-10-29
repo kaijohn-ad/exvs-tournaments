@@ -136,7 +136,8 @@
       - `getDatabase` ファクトリとメモリリセットヘルパーを追加（`database.server.ts`）
     - [ ] Vitest で D1 統合テストを整備
   - [ ] 既存コードの移行（優先度: 高）
-- [ ] **Phase 2: Next.js + Vercel** (代替案)
+    - [x] 管理トップ `/admin` の Remix 版下書き（イベント一覧・作成フォーム）
+  - [ ] **Phase 2: Next.js + Vercel** (代替案)
   - [ ] Next.jsプロジェクトの作成
   - [ ] Vercelへのデプロイ設定
   - [ ] データベースの移行（PlanetScale等）
