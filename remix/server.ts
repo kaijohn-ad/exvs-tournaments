@@ -1,8 +1,21 @@
 import { createRequestHandler, type ServerBuild } from "@remix-run/cloudflare";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore This file won’t exist if it hasn’t yet been built
+// @ts-ignore This file won't exist if it hasn't yet been built
 import * as build from "./build/server"; // eslint-disable-line import/no-unresolved
 import { getLoadContext } from "./load-context";
+
+// 開発環境でcryptoを利用可能にする
+if (process.env.NODE_ENV === 'development') {
+	try {
+		const { webcrypto } = require("node:crypto");
+		if (!globalThis.crypto) {
+			globalThis.crypto = webcrypto as unknown as Crypto;
+		}
+	} catch (error) {
+		// cryptoが利用できない場合は無視
+		console.warn("Failed to setup crypto for development:", error);
+	}
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const handleRemixRequest = createRequestHandler(build as any as ServerBuild);
