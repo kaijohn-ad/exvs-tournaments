@@ -137,6 +137,7 @@
     - [ ] Vitest で D1 統合テストを整備
   - [ ] 既存コードの移行（優先度: 高）
     - [x] 管理トップ `/admin` の Remix 版下書き（イベント一覧・作成フォーム）
+    - [x] プレイヤー管理 `/admin/events/{eventId}/entries/players` を Remix 実装
   - [ ] **Phase 2: Next.js + Vercel** (代替案)
   - [ ] Next.jsプロジェクトの作成
   - [ ] Vercelへのデプロイ設定
