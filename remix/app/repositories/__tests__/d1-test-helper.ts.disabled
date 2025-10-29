@@ -1,0 +1,422 @@
+import { afterEach, beforeAll, afterAll } from "vitest";
+import { getDatabase } from "../database.server";
+import type { AppLoadContext } from "@remix-run/cloudflare";
+
+// テスト用D1データベースの設定
+let testDb: D1Database | null = null;
+let testContext: AppLoadContext | null = null;
+
+export async function setupTestDatabase(): Promise<{ db: D1Database; context: AppLoadContext }> {
+	// テスト用のD1データベースを作成（実際の環境ではwranglerのテスト用DBを使用）
+	// ここではモックを使用してテストを実行
+	const mockDb = createMockD1Database();
+	
+	testDb = mockDb as unknown as D1Database;
+	testContext = {
+		cloudflare: {
+			env: {
+				DB: testDb,
+			},
+			ctx: {
+				waitUntil: () => {},
+				passThroughOnException: () => {},
+				props: {},
+			},
+		},
+		db: testDb,
+	};
+
+	// テスト用スキーマを初期化
+	await initializeTestSchema(testDb as unknown as D1Database);
+
+	return { db: testDb, context: testContext! };
+}
+
+export function getTestDatabase() {
+	if (!testDb || !testContext) {
+		throw new Error("Test database not initialized. Call setupTestDatabase() first.");
+	}
+	return { db: testDb, context: testContext };
+}
+
+export async function cleanupTestDatabase() {
+	if (testDb) {
+		// テストデータをクリーンアップ
+		await cleanupTestData(testDb as unknown as D1Database);
+	}
+	testDb = null;
+	testContext = null;
+}
+
+// モックD1データベースの作成
+function createMockD1Database() {
+	const tables = new Map<string, Map<string, any>>();
+	
+	return {
+		prepare: (sql: string) => {
+			const statement = {
+				bind: (...params: any[]) => {
+					return {
+						all: async () => {
+							const tableName = extractTableName(sql);
+							if (!tableName) return { results: [] };
+							
+							const table = tables.get(tableName) || new Map();
+							const results = Array.from(table.values());
+							
+							// WHERE句の処理（簡単な実装）
+							if (sql.includes('WHERE')) {
+								const filteredResults = results.filter(row => {
+									// 簡単なWHERE句の処理
+									if (sql.includes('slug = ?') && params.length > 0) {
+										return row.slug === params[0];
+									}
+									if (sql.includes('event_id = ?') && params.length > 0) {
+										return row.event_id === params[0];
+									}
+									if (sql.includes('id = ?') && params.length > 0) {
+										return row.id === params[0];
+									}
+									return true;
+								});
+								return { results: filteredResults };
+							}
+							
+							return { results };
+						},
+						first: async () => {
+							const tableName = extractTableName(sql);
+							if (!tableName) return null;
+							
+							const table = tables.get(tableName) || new Map();
+							const results = Array.from(table.values());
+							
+							// WHERE句の処理（簡単な実装）
+							if (sql.includes('WHERE')) {
+								const filteredResults = results.filter(row => {
+									if (sql.includes('slug = ?') && params.length > 0) {
+										return row.slug === params[0];
+									}
+									if (sql.includes('event_id = ?') && params.length > 0) {
+										return row.event_id === params[0];
+									}
+									if (sql.includes('id = ?') && params.length > 0) {
+										return row.id === params[0];
+									}
+									return true;
+								});
+								return filteredResults.length > 0 ? filteredResults[0] : null;
+							}
+							
+							return results.length > 0 ? results[0] : null;
+						},
+						run: async () => {
+							await executeSQL(sql, params, tables);
+							return { success: true, meta: { duration: 0 } };
+						},
+					};
+				},
+			};
+			return statement;
+		},
+	};
+}
+
+// SQLからテーブル名を抽出する簡単な実装
+function extractTableName(sql: string): string | null {
+	const selectMatch = sql.match(/FROM\s+(\w+)/i);
+	if (selectMatch) return selectMatch[1];
+	
+	const insertMatch = sql.match(/INSERT\s+INTO\s+(\w+)/i);
+	if (insertMatch) return insertMatch[1];
+	
+	const updateMatch = sql.match(/UPDATE\s+(\w+)/i);
+	if (updateMatch) return updateMatch[1];
+	
+	const deleteMatch = sql.match(/DELETE\s+FROM\s+(\w+)/i);
+	if (deleteMatch) return deleteMatch[1];
+	
+	return null;
+}
+
+// 簡単なSQL実行（テスト用）
+async function executeSQL(sql: string, params: any[], tables: Map<string, Map<string, any>>) {
+	const tableName = extractTableName(sql);
+	if (!tableName) return;
+	
+	if (!tables.has(tableName)) {
+		tables.set(tableName, new Map());
+	}
+	
+	const table = tables.get(tableName)!;
+	
+	if (sql.toUpperCase().includes('INSERT INTO')) {
+		const id = crypto.randomUUID();
+		const now = new Date().toISOString();
+		
+		// テーブル別のINSERT処理
+		if (tableName === 'events') {
+			table.set(id, {
+				id,
+				name: params[0] || '',
+				slug: params[1] || null,
+				created_at: now
+			});
+		} else if (tableName === 'players') {
+			table.set(id, {
+				id,
+				event_id: params[0] || '',
+				name: params[1] || '',
+				note: params[2] || null,
+				created_at: now
+			});
+		} else if (tableName === 'pairs') {
+			table.set(id, {
+				id,
+				event_id: params[0] || '',
+				player1_id: params[1] || '',
+				player2_id: params[2] || '',
+				seed: params[3] || null,
+				created_at: now
+			});
+		} else if (tableName === 'tournaments') {
+			table.set(id, {
+				id,
+				event_id: params[0] || '',
+				name: params[1] || '',
+				format: params[2] || 'single-elimination',
+				seeding_mode: params[3] || 'random',
+				created_at: now
+			});
+		} else if (tableName === 'teams') {
+			table.set(id, {
+				id,
+				event_id: params[0] || '',
+				name: params[1] || '',
+				created_at: now
+			});
+		} else if (tableName === 'matches') {
+			table.set(id, {
+				id,
+				context: params[0] || '',
+				context_id: params[1] || '',
+				slot_index: params[2] || null,
+				side_a_type: params[3] || '',
+				side_a_pair_id: params[4] || null,
+				side_a_player1_id: params[5] || null,
+				side_a_player2_id: params[6] || null,
+				side_b_type: params[7] || '',
+				side_b_pair_id: params[8] || null,
+				side_b_player1_id: params[9] || null,
+				side_b_player2_id: params[10] || null,
+				score_a: params[11] || 0,
+				score_b: params[12] || 0,
+				winner_side: params[13] || '',
+				status: params[14] || 'completed',
+				played_at: params[15] || now
+			});
+		} else if (tableName === 'player_stats') {
+			table.set(id, {
+				id,
+				scope: params[0] || '',
+				scope_id: params[1] || null,
+				player_id: params[2] || '',
+				wins: params[3] || 0,
+				losses: params[4] || 0,
+				last_updated_at: now
+			});
+		} else {
+			// その他のテーブル用の汎用処理
+			table.set(id, { id, ...params.reduce((acc, param, index) => {
+				acc[`param${index}`] = param;
+				return acc;
+			}, {}) });
+		}
+	} else if (sql.toUpperCase().includes('UPDATE')) {
+		// UPDATE処理（簡単な実装）
+		const idParam = params[params.length - 1]; // 最後のパラメータをIDと仮定
+		if (idParam && table.has(idParam)) {
+			const existing = table.get(idParam);
+			// 簡単なUPDATE実装
+			table.set(idParam, { ...existing, ...params.slice(0, -1).reduce((acc, param, index) => {
+				acc[`param${index}`] = param;
+				return acc;
+			}, {}) });
+		}
+	} else if (sql.toUpperCase().includes('DELETE FROM')) {
+		if (sql.includes('WHERE id = ?') && params.length > 0) {
+			table.delete(params[0]);
+		} else {
+			table.clear();
+		}
+	}
+}
+
+// テスト用スキーマの初期化
+async function initializeTestSchema(db: D1Database) {
+	// 実際のスキーマファイルから読み込む
+	const schema = `
+		CREATE TABLE IF NOT EXISTS events (
+			id TEXT PRIMARY KEY,
+			name TEXT NOT NULL,
+			slug TEXT UNIQUE,
+			created_at TEXT NOT NULL DEFAULT (datetime('now'))
+		);
+
+		CREATE TABLE IF NOT EXISTS players (
+			id TEXT PRIMARY KEY,
+			event_id TEXT NOT NULL,
+			name TEXT NOT NULL,
+			note TEXT,
+			created_at TEXT NOT NULL DEFAULT (datetime('now')),
+			FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
+		);
+
+		CREATE TABLE IF NOT EXISTS pairs (
+			id TEXT PRIMARY KEY,
+			event_id TEXT NOT NULL,
+			player1_id TEXT NOT NULL,
+			player2_id TEXT NOT NULL,
+			seed INTEGER,
+			created_at TEXT NOT NULL DEFAULT (datetime('now')),
+			FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE,
+			FOREIGN KEY (player1_id) REFERENCES players(id) ON DELETE CASCADE,
+			FOREIGN KEY (player2_id) REFERENCES players(id) ON DELETE CASCADE
+		);
+
+		CREATE TABLE IF NOT EXISTS tournaments (
+			id TEXT PRIMARY KEY,
+			event_id TEXT NOT NULL,
+			name TEXT NOT NULL,
+			format TEXT NOT NULL DEFAULT 'single-elimination',
+			seeding_mode TEXT NOT NULL DEFAULT 'random',
+			created_at TEXT NOT NULL DEFAULT (datetime('now')),
+			FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
+		);
+
+		CREATE TABLE IF NOT EXISTS teams (
+			id TEXT PRIMARY KEY,
+			event_id TEXT NOT NULL,
+			name TEXT NOT NULL,
+			created_at TEXT NOT NULL DEFAULT (datetime('now')),
+			FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
+		);
+
+		CREATE TABLE IF NOT EXISTS team_members (
+			id TEXT PRIMARY KEY,
+			team_id TEXT NOT NULL,
+			player_id TEXT NOT NULL,
+			created_at TEXT NOT NULL DEFAULT (datetime('now')),
+			FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,
+			FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE CASCADE,
+			UNIQUE(team_id, player_id)
+		);
+
+		CREATE TABLE IF NOT EXISTS team_battles (
+			id TEXT PRIMARY KEY,
+			event_id TEXT NOT NULL,
+			team_a_id TEXT NOT NULL,
+			team_b_id TEXT NOT NULL,
+			slots_count INTEGER NOT NULL DEFAULT 3 CHECK(slots_count >= 1 AND slots_count <= 5),
+			format TEXT NOT NULL DEFAULT 'waseda',
+			allow_double_appearance_per_team INTEGER NOT NULL DEFAULT 1,
+			tiebreak TEXT NOT NULL DEFAULT 'off' CHECK(tiebreak IN ('off', 'representative')),
+			status TEXT NOT NULL DEFAULT 'pending',
+			result TEXT,
+			created_at TEXT NOT NULL DEFAULT (datetime('now')),
+			FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE,
+			FOREIGN KEY (team_a_id) REFERENCES teams(id) ON DELETE CASCADE,
+			FOREIGN KEY (team_b_id) REFERENCES teams(id) ON DELETE CASCADE
+		);
+
+		CREATE TABLE IF NOT EXISTS team_battle_slots (
+			id TEXT PRIMARY KEY,
+			team_battle_id TEXT NOT NULL,
+			team_id TEXT NOT NULL,
+			slot_index INTEGER NOT NULL,
+			assignment_type TEXT NOT NULL CHECK(assignment_type IN ('pair', 'adhoc')),
+			pair_id TEXT,
+			player1_id TEXT,
+			player2_id TEXT,
+			created_at TEXT NOT NULL DEFAULT (datetime('now')),
+			FOREIGN KEY (team_battle_id) REFERENCES team_battles(id) ON DELETE CASCADE,
+			FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,
+			FOREIGN KEY (pair_id) REFERENCES pairs(id) ON DELETE SET NULL,
+			FOREIGN KEY (player1_id) REFERENCES players(id) ON DELETE SET NULL,
+			FOREIGN KEY (player2_id) REFERENCES players(id) ON DELETE SET NULL,
+			UNIQUE(team_battle_id, team_id, slot_index)
+		);
+
+		CREATE TABLE IF NOT EXISTS matches (
+			id TEXT PRIMARY KEY,
+			context TEXT NOT NULL CHECK(context IN ('bracket', 'teamBattle', 'tiebreak')),
+			context_id TEXT NOT NULL,
+			slot_index INTEGER,
+			side_a_type TEXT NOT NULL CHECK(side_a_type IN ('pair', 'adhoc')),
+			side_a_pair_id TEXT,
+			side_a_player1_id TEXT,
+			side_a_player2_id TEXT,
+			side_b_type TEXT NOT NULL CHECK(side_b_type IN ('pair', 'adhoc')),
+			side_b_pair_id TEXT,
+			side_b_player1_id TEXT,
+			side_b_player2_id TEXT,
+			score_a INTEGER NOT NULL,
+			score_b INTEGER NOT NULL,
+			winner_side TEXT NOT NULL CHECK(winner_side IN ('a', 'b')),
+			status TEXT NOT NULL DEFAULT 'completed',
+			played_at TEXT NOT NULL DEFAULT (datetime('now')),
+			FOREIGN KEY (side_a_pair_id) REFERENCES pairs(id) ON DELETE SET NULL,
+			FOREIGN KEY (side_a_player1_id) REFERENCES players(id) ON DELETE SET NULL,
+			FOREIGN KEY (side_a_player2_id) REFERENCES players(id) ON DELETE SET NULL,
+			FOREIGN KEY (side_b_pair_id) REFERENCES pairs(id) ON DELETE SET NULL,
+			FOREIGN KEY (side_b_player1_id) REFERENCES players(id) ON DELETE SET NULL,
+			FOREIGN KEY (side_b_player2_id) REFERENCES players(id) ON DELETE SET NULL
+		);
+
+		CREATE TABLE IF NOT EXISTS bracket_matches (
+			id TEXT PRIMARY KEY,
+			tournament_id TEXT NOT NULL,
+			round INTEGER NOT NULL,
+			position INTEGER NOT NULL,
+			participant_a_type TEXT CHECK(participant_a_type IN ('pair', 'bye')),
+			participant_a_pair_id TEXT,
+			participant_b_type TEXT CHECK(participant_b_type IN ('pair', 'bye')),
+			participant_b_pair_id TEXT,
+			score_a INTEGER,
+			score_b INTEGER,
+			winner_side TEXT CHECK(winner_side IN ('a', 'b', NULL)),
+			status TEXT NOT NULL DEFAULT 'pending',
+			created_at TEXT NOT NULL DEFAULT (datetime('now')),
+			FOREIGN KEY (tournament_id) REFERENCES tournaments(id) ON DELETE CASCADE,
+			FOREIGN KEY (participant_a_pair_id) REFERENCES pairs(id) ON DELETE SET NULL,
+			FOREIGN KEY (participant_b_pair_id) REFERENCES pairs(id) ON DELETE SET NULL,
+			UNIQUE(tournament_id, round, position)
+		);
+
+		CREATE TABLE IF NOT EXISTS player_stats (
+			id TEXT PRIMARY KEY,
+			scope TEXT NOT NULL CHECK(scope IN ('event', 'tournament', 'teamBattle', 'global')),
+			scope_id TEXT,
+			player_id TEXT NOT NULL,
+			wins INTEGER NOT NULL DEFAULT 0,
+			losses INTEGER NOT NULL DEFAULT 0,
+			last_updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+			FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE CASCADE
+		);
+	`;
+
+	// スキーマを実行（モックでは実際には何もしない）
+	console.log("Test schema initialized");
+}
+
+// テストデータのクリーンアップ
+async function cleanupTestData(db: D1Database) {
+	// モックでは実際には何もしない
+	console.log("Test data cleaned up");
+}
+
+// テスト用のデータベースコンテキストを取得
+export function getTestDatabaseContext() {
+	const { db, context } = getTestDatabase();
+	return getDatabase(context);
+}

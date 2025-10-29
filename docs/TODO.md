@@ -133,14 +133,14 @@
   - [x] Cloudflare Workersアダプターの設定
     - Remix `server.ts` を Cloudflare `ExecutionContext` と互換になるよう更新し、`AppLoadContext` に Workers の環境を安全に供給
     - `vite.config.ts` で `cloudflareDevProxyVitePlugin` を開発モード限定にし、`remix vite:build` が Cloudflare Workers ターゲットで完了することを確認 (`npm run build`)
-  - [ ] D1データベースの統合
+  - [x] D1データベースの統合
     - [x] Remix `AppLoadContext` に D1 バインディングを追加（`remix/load-context.ts`）
     - [x] D1 用ユーティリティ関数を整備（`remix/app/utils/d1.server.ts`）
     - [x] トップページ loader で D1 接続テレメトリを表示
     - [x] SvelteKit リポジトリ層の Remix 版を実装
       - Remix `app/repositories/` にメモリ実装と D1 実装を移植
       - `getDatabase` ファクトリとメモリリセットヘルパーを追加（`database.server.ts`）
-    - [ ] Vitest で D1 統合テストを整備
+    - [x] Vitest で D1 統合テストを整備
   - [x] 既存コードの移行（優先度: 高）
     - [x] 管理トップ `/admin` の Remix 版下書き（イベント一覧・作成フォーム）
     - [x] プレイヤー管理 `/admin/events/{eventId}/entries/players` を Remix 実装

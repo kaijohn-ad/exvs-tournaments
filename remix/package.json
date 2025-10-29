@@ -57,6 +57,9 @@
     "preview": "npm run build && wrangler dev",
     "start": "wrangler dev",
     "test": "vitest run",
+    "test:d1": "vitest run --reporter=verbose app/repositories/__tests__/*d1*.test.ts",
+    "test:integration": "vitest run --reporter=verbose app/repositories/__tests__/*integration*.test.ts",
+    "test:watch": "vitest",
     "typecheck": "tsc",
     "typegen": "wrangler types"
   },

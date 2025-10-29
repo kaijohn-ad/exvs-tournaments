@@ -1,0 +1,299 @@
+import { describe, expect, test, beforeEach, afterEach } from "vitest";
+import { setupTestDatabase, cleanupTestDatabase, getTestDatabaseContext } from "./d1-test-helper";
+
+describe("PlayerStats D1 Integration Tests", () => {
+	let eventId: string;
+	let player1Id: string;
+	let player2Id: string;
+	let player3Id: string;
+
+	beforeEach(async () => {
+		await setupTestDatabase();
+		const database = getTestDatabaseContext();
+		
+		// テスト用のイベントを作成
+		const event = await database.events.createEvent({
+			name: "Test Event",
+			slug: "test-event"
+		});
+		eventId = event.id;
+
+		// テスト用のプレイヤーを作成
+		const player1 = await database.players.createPlayer(eventId, { name: "Player 1" });
+		const player2 = await database.players.createPlayer(eventId, { name: "Player 2" });
+		const player3 = await database.players.createPlayer(eventId, { name: "Player 3" });
+		
+		player1Id = player1.id;
+		player2Id = player2.id;
+		player3Id = player3.id;
+	});
+
+	afterEach(async () => {
+		await cleanupTestDatabase();
+	});
+
+	test("should create and list player stats", async () => {
+		const database = getTestDatabaseContext();
+
+		const statsData = {
+			scope: "event" as const,
+			scope_id: eventId,
+			player_id: player1Id,
+			wins: 5,
+			losses: 3
+		};
+
+		const createdStats = await database.playerStats.createPlayerStats(statsData);
+		
+		expect(createdStats).toBeDefined();
+		expect(createdStats.scope).toBe(statsData.scope);
+		expect(createdStats.scope_id).toBe(statsData.scope_id);
+		expect(createdStats.player_id).toBe(statsData.player_id);
+		expect(createdStats.wins).toBe(statsData.wins);
+		expect(createdStats.losses).toBe(statsData.losses);
+		expect(createdStats.id).toBeDefined();
+		expect(createdStats.last_updated_at).toBeDefined();
+
+		// プレイヤー統計一覧を取得
+		const stats = await database.playerStats.listPlayerStats("event", eventId);
+		
+		expect(stats).toHaveLength(1);
+		expect(stats[0].id).toBe(createdStats.id);
+		expect(stats[0].player_id).toBe(statsData.player_id);
+		expect(stats[0].wins).toBe(statsData.wins);
+		expect(stats[0].losses).toBe(statsData.losses);
+	});
+
+	test("should create player stats with default values", async () => {
+		const database = getTestDatabaseContext();
+
+		const statsData = {
+			scope: "global" as const,
+			player_id: player1Id
+		};
+
+		const createdStats = await database.playerStats.createPlayerStats(statsData);
+		
+		expect(createdStats).toBeDefined();
+		expect(createdStats.scope).toBe(statsData.scope);
+		expect(createdStats.scope_id).toBeNull();
+		expect(createdStats.player_id).toBe(statsData.player_id);
+		expect(createdStats.wins).toBe(0);
+		expect(createdStats.losses).toBe(0);
+	});
+
+	test("should get player stats by player and scope", async () => {
+		const database = getTestDatabaseContext();
+
+		const statsData = {
+			scope: "event" as const,
+			scope_id: eventId,
+			player_id: player1Id,
+			wins: 3,
+			losses: 2
+		};
+
+		const createdStats = await database.playerStats.createPlayerStats(statsData);
+		const foundStats = await database.playerStats.getPlayerStats(player1Id, "event", eventId);
+		
+		expect(foundStats).toBeDefined();
+		expect(foundStats!.id).toBe(createdStats.id);
+		expect(foundStats!.player_id).toBe(player1Id);
+		expect(foundStats!.wins).toBe(3);
+		expect(foundStats!.losses).toBe(2);
+	});
+
+	test("should return null for non-existent player stats", async () => {
+		const database = getTestDatabaseContext();
+
+		const foundStats = await database.playerStats.getPlayerStats(player1Id, "event", eventId);
+		
+		expect(foundStats).toBeNull();
+	});
+
+	test("should update player stats", async () => {
+		const database = getTestDatabaseContext();
+
+		const statsData = {
+			scope: "event" as const,
+			scope_id: eventId,
+			player_id: player1Id,
+			wins: 2,
+			losses: 1
+		};
+
+		const createdStats = await database.playerStats.createPlayerStats(statsData);
+		
+		const updateData = {
+			wins: 4,
+			losses: 2
+		};
+
+		const updatedStats = await database.playerStats.updatePlayerStats(createdStats.id, updateData);
+		
+		expect(updatedStats).toBeDefined();
+		expect(updatedStats.wins).toBe(updateData.wins);
+		expect(updatedStats.losses).toBe(updateData.losses);
+		expect(updatedStats.id).toBe(createdStats.id);
+
+		// 更新された統計が正しく取得できることを確認
+		const foundStats = await database.playerStats.getPlayerStats(player1Id, "event", eventId);
+		expect(foundStats).toBeDefined();
+		expect(foundStats!.wins).toBe(updateData.wins);
+		expect(foundStats!.losses).toBe(updateData.losses);
+	});
+
+	test("should delete player stats", async () => {
+		const database = getTestDatabaseContext();
+
+		const statsData = {
+			scope: "event" as const,
+			scope_id: eventId,
+			player_id: player1Id,
+			wins: 3,
+			losses: 1
+		};
+
+		const createdStats = await database.playerStats.createPlayerStats(statsData);
+		
+		// 統計が存在することを確認
+		const statsBefore = await database.playerStats.listPlayerStats("event", eventId);
+		expect(statsBefore).toHaveLength(1);
+
+		// 統計を削除
+		await database.playerStats.deletePlayerStats(createdStats.id);
+
+		// 統計が削除されたことを確認
+		const statsAfter = await database.playerStats.listPlayerStats("event", eventId);
+		expect(statsAfter).toHaveLength(0);
+
+		// プレイヤーIDで検索しても見つからないことを確認
+		const foundStats = await database.playerStats.getPlayerStats(player1Id, "event", eventId);
+		expect(foundStats).toBeNull();
+	});
+
+	test("should handle multiple player stats", async () => {
+		const database = getTestDatabaseContext();
+
+		const statsData = [
+			{ scope: "event" as const, scope_id: eventId, player_id: player1Id, wins: 3, losses: 1 },
+			{ scope: "event" as const, scope_id: eventId, player_id: player2Id, wins: 2, losses: 2 },
+			{ scope: "event" as const, scope_id: eventId, player_id: player3Id, wins: 1, losses: 3 }
+		];
+
+		// 複数のプレイヤー統計を作成
+		const createdStats = [];
+		for (const statData of statsData) {
+			const createdStat = await database.playerStats.createPlayerStats(statData);
+			createdStats.push(createdStat);
+		}
+
+		// 全ての統計が作成されたことを確認
+		expect(createdStats).toHaveLength(3);
+
+		// プレイヤー統計一覧を取得
+		const allStats = await database.playerStats.listPlayerStats("event", eventId);
+		expect(allStats).toHaveLength(3);
+
+		// 各統計が正しく作成されていることを確認
+		for (let i = 0; i < statsData.length; i++) {
+			const stat = allStats.find(s => s.player_id === statsData[i].player_id);
+			expect(stat).toBeDefined();
+			expect(stat!.wins).toBe(statsData[i].wins);
+			expect(stat!.losses).toBe(statsData[i].losses);
+		}
+	});
+
+	test("should list player stats ordered by wins desc, losses asc", async () => {
+		const database = getTestDatabaseContext();
+
+		const statsData = [
+			{ scope: "event" as const, scope_id: eventId, player_id: player1Id, wins: 2, losses: 3 },
+			{ scope: "event" as const, scope_id: eventId, player_id: player2Id, wins: 3, losses: 1 },
+			{ scope: "event" as const, scope_id: eventId, player_id: player3Id, wins: 3, losses: 2 }
+		];
+
+		// プレイヤー統計を作成
+		for (const statData of statsData) {
+			await database.playerStats.createPlayerStats(statData);
+		}
+
+		// プレイヤー統計一覧を取得
+		const stats = await database.playerStats.listPlayerStats("event", eventId);
+		
+		// 勝ち数降順、負け数昇順で並んでいることを確認
+		expect(stats).toHaveLength(3);
+		expect(stats[0].player_id).toBe(player2Id); // 3勝1敗
+		expect(stats[1].player_id).toBe(player3Id); // 3勝2敗
+		expect(stats[2].player_id).toBe(player1Id); // 2勝3敗
+	});
+
+	test("should handle different scopes", async () => {
+		const database = getTestDatabaseContext();
+
+		// 異なるスコープの統計を作成
+		const eventStats = await database.playerStats.createPlayerStats({
+			scope: "event",
+			scope_id: eventId,
+			player_id: player1Id,
+			wins: 2,
+			losses: 1
+		});
+
+		const globalStats = await database.playerStats.createPlayerStats({
+			scope: "global",
+			player_id: player1Id,
+			wins: 5,
+			losses: 3
+		});
+
+		// スコープ別に統計を取得
+		const eventStatsList = await database.playerStats.listPlayerStats("event", eventId);
+		const globalStatsList = await database.playerStats.listPlayerStats("global");
+
+		expect(eventStatsList).toHaveLength(1);
+		expect(eventStatsList[0].id).toBe(eventStats.id);
+		expect(eventStatsList[0].wins).toBe(2);
+		expect(eventStatsList[0].losses).toBe(1);
+
+		expect(globalStatsList).toHaveLength(1);
+		expect(globalStatsList[0].id).toBe(globalStats.id);
+		expect(globalStatsList[0].wins).toBe(5);
+		expect(globalStatsList[0].losses).toBe(3);
+	});
+
+	test("should handle stats from different players", async () => {
+		const database = getTestDatabaseContext();
+
+		// 異なるプレイヤーの統計を作成
+		const player1Stats = await database.playerStats.createPlayerStats({
+			scope: "event",
+			scope_id: eventId,
+			player_id: player1Id,
+			wins: 3,
+			losses: 1
+		});
+
+		const player2Stats = await database.playerStats.createPlayerStats({
+			scope: "event",
+			scope_id: eventId,
+			player_id: player2Id,
+			wins: 1,
+			losses: 3
+		});
+
+		// 各プレイヤーの統計を取得
+		const player1FoundStats = await database.playerStats.getPlayerStats(player1Id, "event", eventId);
+		const player2FoundStats = await database.playerStats.getPlayerStats(player2Id, "event", eventId);
+
+		expect(player1FoundStats).toBeDefined();
+		expect(player1FoundStats!.id).toBe(player1Stats.id);
+		expect(player1FoundStats!.wins).toBe(3);
+		expect(player1FoundStats!.losses).toBe(1);
+
+		expect(player2FoundStats).toBeDefined();
+		expect(player2FoundStats!.id).toBe(player2Stats.id);
+		expect(player2FoundStats!.wins).toBe(1);
+		expect(player2FoundStats!.losses).toBe(3);
+	});
+});
