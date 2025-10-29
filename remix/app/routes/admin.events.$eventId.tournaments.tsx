@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
 	Form,
 	Link,
+	Outlet,
 	useActionData,
 	useLoaderData,
 	useNavigation,
@@ -703,11 +704,10 @@ export default function TournamentsRoute() {
 										</select>
 										<button
 											type="submit"
-											disabled={isSubmitting || generatingTournamentId === tournament.id}
-											onClick={() => setGeneratingTournamentId(tournament.id)}
+											disabled={isSubmitting}
 											className="rounded-lg bg-green-600 px-3 py-1 text-xs font-medium text-white transition hover:bg-green-700 disabled:opacity-50"
 										>
-											{generatingTournamentId === tournament.id ? '生成中…' : 'ブラケット生成'}
+											{isSubmitting ? '生成中…' : 'ブラケット生成'}
 										</button>
 									</Form>
 
@@ -865,6 +865,9 @@ export default function TournamentsRoute() {
 					</>
 				)}
 			</section>
+
+			{/* 子ルートのコンテンツを表示 */}
+			<Outlet />
 		</div>
 	);
 }
