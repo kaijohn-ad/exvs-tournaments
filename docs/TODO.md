@@ -131,7 +131,9 @@
     - [x] Remix `AppLoadContext` に D1 バインディングを追加（`remix/load-context.ts`）
     - [x] D1 用ユーティリティ関数を整備（`remix/app/utils/d1.server.ts`）
     - [x] トップページ loader で D1 接続テレメトリを表示
-    - [ ] SvelteKit リポジトリ層の Remix 版を実装
+    - [x] SvelteKit リポジトリ層の Remix 版を実装
+      - Remix `app/repositories/` にメモリ実装と D1 実装を移植
+      - `getDatabase` ファクトリとメモリリセットヘルパーを追加（`database.server.ts`）
     - [ ] Vitest で D1 統合テストを整備
   - [ ] 既存コードの移行（優先度: 高）
 - [ ] **Phase 2: Next.js + Vercel** (代替案)
