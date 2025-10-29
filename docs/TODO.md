@@ -161,8 +161,11 @@
       - [x] プレイヤー統計表示（勝利数・敗北数・勝率・順位表示）
       - [x] メダル表示（1位🥇、2位🥈、3位🥉）とプログレスバー
       - [x] テストケース作成・実行完了
-    - [ ] トーナメント設定 `/admin/events/{eventId}/tournaments` を Remix 移植
-      - ❌ 404エラー（ルートファイルが未実装）
+    - [x] トーナメント設定 `/admin/events/{eventId}/tournaments` を Remix 移植
+      - ✅ ルートファイル `admin.events.$eventId.tournaments.tsx` 実装完了
+      - ✅ ブラケット生成機能 `bracket-generator.ts` 移植完了
+      - ✅ 全機能（作成・更新・削除・インポート・エクスポート・JSONエディタ・ブラケット生成）実装
+      - ✅ テストケース作成・実行完了
     - [ ] ブラケット表示 `/admin/events/{eventId}/tournaments/{tournamentId}/bracket` を Remix 移植
   - [ ] **Phase 2: Next.js + Vercel** (代替案)
   - [ ] Next.jsプロジェクトの作成
