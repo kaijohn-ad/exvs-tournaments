@@ -1,6 +1,6 @@
 # Boost Bracket TODO一覧
 
-最終更新: 2025-10-29 (Kai session - update 6)
+最終更新: 2025-10-29 (Kai session - update 7)
 
 ## ✅ 完了済み
 - [x] SvelteKit プロジェクト初期化と Cloudflare アダプタ設定
@@ -128,6 +128,11 @@
     - Remix `server.ts` を Cloudflare `ExecutionContext` と互換になるよう更新し、`AppLoadContext` に Workers の環境を安全に供給
     - `vite.config.ts` で `cloudflareDevProxyVitePlugin` を開発モード限定にし、`remix vite:build` が Cloudflare Workers ターゲットで完了することを確認 (`npm run build`)
   - [ ] D1データベースの統合
+    - [x] Remix `AppLoadContext` に D1 バインディングを追加（`remix/load-context.ts`）
+    - [x] D1 用ユーティリティ関数を整備（`remix/app/utils/d1.server.ts`）
+    - [x] トップページ loader で D1 接続テレメトリを表示
+    - [ ] SvelteKit リポジトリ層の Remix 版を実装
+    - [ ] Vitest で D1 統合テストを整備
   - [ ] 既存コードの移行（優先度: 高）
 - [ ] **Phase 2: Next.js + Vercel** (代替案)
   - [ ] Next.jsプロジェクトの作成
