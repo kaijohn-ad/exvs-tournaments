@@ -139,7 +139,7 @@
     - [x] 管理トップ `/admin` の Remix 版下書き（イベント一覧・作成フォーム）
     - [x] プレイヤー管理 `/admin/events/{eventId}/entries/players` を Remix 実装
     - [x] ペア管理 `/admin/events/{eventId}/entries/pairs` を Remix 移植
-    - [ ] チーム管理 `/admin/events/{eventId}/entries/teams` を Remix 移植
+    - [x] チーム管理 `/admin/events/{eventId}/entries/teams` を Remix 移植
     - [ ] 団体戦一覧 `/admin/events/{eventId}/team-battles` を Remix 移植
     - [ ] 団体戦詳細 `/admin/events/{eventId}/team-battles/{battleId}` を Remix 移植
     - [ ] 試合ログ `/admin/events/{eventId}/matches` を Remix 移植
