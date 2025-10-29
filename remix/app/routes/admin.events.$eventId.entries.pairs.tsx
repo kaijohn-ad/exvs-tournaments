@@ -66,32 +66,56 @@ export async function loader({ params, context }: LoaderFunctionArgs) {
 		throw redirect("/admin");
 	}
 
-	const db = getDatabase(context);
-	const [pairs, players] = await Promise.all([
-		db.pairs.listPairs(eventId),
-		db.players.listPlayers(eventId),
-	]);
+	try {
+		const db = getDatabase(context);
+		const [pairs, players] = await Promise.all([
+			db.pairs.listPairs(eventId),
+			db.players.listPlayers(eventId),
+		]);
 
-	const sortedPairs = sortPairs(pairs);
-	const sortedPlayers = [...players].sort((a, b) => a.name.localeCompare(b.name, "ja"));
+		const sortedPairs = sortPairs(pairs);
+		const sortedPlayers = [...players].sort((a, b) => a.name.localeCompare(b.name, "ja"));
 
-	return json<LoaderData>({
-		eventId,
-		pairs: sortedPairs,
-		players: sortedPlayers,
-		pairsJson: JSON.stringify(sortedPairs, null, 2),
-	});
+		return json<LoaderData>({
+			eventId,
+			pairs: sortedPairs,
+			players: sortedPlayers,
+			pairsJson: JSON.stringify(sortedPairs, null, 2),
+		});
+	} catch (error) {
+		console.error("pairs loader failed", {
+			error: error instanceof Error ? error.message : String(error),
+			stack: error instanceof Error ? error.stack : undefined,
+			eventId,
+			contextKeys: Object.keys(context),
+			dbExists: !!context.db,
+			cloudflareEnv: context.cloudflare?.env ? Object.keys(context.cloudflare.env) : "undefined"
+		});
+		throw error;
+	}
 }
 
 async function fetchPairs(context: AppLoadContext, eventId: string) {
-	const db = getDatabase(context);
-	const pairs = await db.pairs.listPairs(eventId);
-	const sortedPairs = sortPairs(pairs);
+	try {
+		const db = getDatabase(context);
+		const pairs = await db.pairs.listPairs(eventId);
+		const sortedPairs = sortPairs(pairs);
 
-	return {
-		pairs: sortedPairs,
-		pairsJson: JSON.stringify(sortedPairs, null, 2),
-	};
+		return {
+			pairs: sortedPairs,
+			pairsJson: JSON.stringify(sortedPairs, null, 2),
+		};
+	} catch (error) {
+		console.error("fetchPairs failed", {
+			error: error instanceof Error ? error.message : String(error),
+			stack: error instanceof Error ? error.stack : undefined,
+			eventId,
+			contextKeys: Object.keys(context),
+			dbExists: !!context.db,
+			cloudflareEnv: context.cloudflare?.env ? Object.keys(context.cloudflare.env) : "undefined"
+		});
+		throw error;
+	}
 }
 
 export async function action({ request, params, context }: ActionFunctionArgs) {
@@ -341,12 +365,20 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 				);
 		}
 	} catch (error) {
-		console.error("pairs action failed", error);
+		console.error("pairs action failed", {
+			error: error instanceof Error ? error.message : String(error),
+			stack: error instanceof Error ? error.stack : undefined,
+			intent,
+			eventId,
+			contextKeys: Object.keys(context),
+			dbExists: !!context.db,
+			cloudflareEnv: context.cloudflare?.env ? Object.keys(context.cloudflare.env) : "undefined"
+		});
 		return json<ActionError>(
 			{
 				type: "error",
 				source: intent ?? "create",
-				message: "処理中にエラーが発生しました。",
+				message: `処理中にエラーが発生しました: ${error instanceof Error ? error.message : String(error)}`,
 			},
 			{ status: 500 },
 		);
