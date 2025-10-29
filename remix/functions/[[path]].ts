@@ -13,7 +13,13 @@ export const onRequest: PagesFunction = async (context) => {
         url.pathname === "/favicon.ico" ||
         url.pathname.startsWith("/manifest-") ||
         url.pathname.endsWith(".css") ||
-        url.pathname.endsWith(".js")
+        url.pathname.endsWith(".js") ||
+        url.pathname.endsWith(".png") ||
+        url.pathname.endsWith(".jpg") ||
+        url.pathname.endsWith(".jpeg") ||
+        url.pathname.endsWith(".gif") ||
+        url.pathname.endsWith(".svg") ||
+        url.pathname.endsWith(".webp")
     ) {
         return context.next();
     }
