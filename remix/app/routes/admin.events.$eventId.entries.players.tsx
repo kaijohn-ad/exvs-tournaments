@@ -61,26 +61,50 @@ export async function loader({ params, context }: LoaderFunctionArgs) {
 		throw redirect("/admin");
 	}
 
-	const db = getDatabase(context);
-	const players = await db.players.listPlayers(eventId);
-	const sortedPlayers = sortPlayers(players);
+	try {
+		const db = getDatabase(context);
+		const players = await db.players.listPlayers(eventId);
+		const sortedPlayers = sortPlayers(players);
 
-	return json<LoaderData>({
-		eventId,
-		players: sortedPlayers,
-		playersJson: JSON.stringify(sortedPlayers, null, 2),
-	});
+		return json<LoaderData>({
+			eventId,
+			players: sortedPlayers,
+			playersJson: JSON.stringify(sortedPlayers, null, 2),
+		});
+	} catch (error) {
+		console.error("players loader failed", {
+			error: error instanceof Error ? error.message : String(error),
+			stack: error instanceof Error ? error.stack : undefined,
+			eventId,
+			contextKeys: Object.keys(context),
+			dbExists: !!context.db,
+			cloudflareEnv: context.cloudflare?.env ? Object.keys(context.cloudflare.env) : "undefined"
+		});
+		throw error;
+	}
 }
 
 async function fetchPlayers(ctx: AppLoadContext, eventId: string) {
-	const db = getDatabase(ctx);
-	const players = await db.players.listPlayers(eventId);
-	const sortedPlayers = sortPlayers(players);
+	try {
+		const db = getDatabase(ctx);
+		const players = await db.players.listPlayers(eventId);
+		const sortedPlayers = sortPlayers(players);
 
-	return {
-		players: sortedPlayers,
-		playersJson: JSON.stringify(sortedPlayers, null, 2),
-	};
+		return {
+			players: sortedPlayers,
+			playersJson: JSON.stringify(sortedPlayers, null, 2),
+		};
+	} catch (error) {
+		console.error("fetchPlayers failed", {
+			error: error instanceof Error ? error.message : String(error),
+			stack: error instanceof Error ? error.stack : undefined,
+			eventId,
+			contextKeys: Object.keys(ctx),
+			dbExists: !!ctx.db,
+			cloudflareEnv: ctx.cloudflare?.env ? Object.keys(ctx.cloudflare.env) : "undefined"
+		});
+		throw error;
+	}
 }
 
 export async function action({ request, params, context }: ActionFunctionArgs) {
@@ -290,12 +314,20 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 			}
 		}
 	} catch (error) {
-		console.error("players action failed", error);
+		console.error("players action failed", {
+			error: error instanceof Error ? error.message : String(error),
+			stack: error instanceof Error ? error.stack : undefined,
+			intent,
+			eventId,
+			contextKeys: Object.keys(context),
+			dbExists: !!context.db,
+			cloudflareEnv: context.cloudflare?.env ? Object.keys(context.cloudflare.env) : "undefined"
+		});
 		return json<ActionError>(
 			{
 				type: "error",
 				source: intent ?? "create",
-				message: "処理中にエラーが発生しました。",
+				message: `処理中にエラーが発生しました: ${error instanceof Error ? error.message : String(error)}`,
 			},
 			{ status: 500 },
 		);

@@ -30,6 +30,15 @@ export function getLoadContext({ context }: GetLoadContextArgs): RemixAppLoadCon
 	// 開発環境ではメモリストアを使用
 	const useMemoryStore = process.env.USE_MEMORY_STORE === 'true' || !cloudflare.env.DB;
 
+	// 本番環境でのデータベース接続をログ出力
+	if (process.env.NODE_ENV === 'production') {
+		console.log("[load-context] Production environment detected", {
+			hasDB: !!cloudflare.env.DB,
+			useMemoryStore,
+			envKeys: cloudflare.env ? Object.keys(cloudflare.env) : "undefined"
+		});
+	}
+
 	return {
 		cloudflare: {
 			...cloudflare,
