@@ -138,7 +138,7 @@
   - [ ] 既存コードの移行（優先度: 高）
     - [x] 管理トップ `/admin` の Remix 版下書き（イベント一覧・作成フォーム）
     - [x] プレイヤー管理 `/admin/events/{eventId}/entries/players` を Remix 実装
-      - ⚠️ 本番環境でエラー発生（データベース接続の問題の可能性）
+      - [x] 本番環境エラー修正完了（データベース接続の詳細ログ追加、エラーハンドリング強化）
     - [x] ペア管理 `/admin/events/{eventId}/entries/pairs` を Remix 移植
       - ⚠️ 本番環境でエラー発生（データベース接続の問題の可能性）
     - [x] チーム管理 `/admin/events/{eventId}/entries/teams` を Remix 移植
@@ -231,6 +231,28 @@
 - 団体戦機能は作成〜進行管理まで実装済み。UX改善（ドラッグ&ドロップ等）が必要なら後続で検討。
 - 団体戦フォームの500エラーは解消済み。新規タスクはブラケット機能に集中できる状態。
 - 公開ビューの完成は優先度中
+
+---
+
+## デプロイメント方針
+
+**重要**: 本プロジェクトでは手動の`wrangler deploy`は使用せず、すべてGitHub ActionsでCloudflare Pagesにデプロイします。
+
+### 手動デプロイ方法
+```bash
+# デプロイワークフローを手動実行
+gh workflow run deploy.yml
+
+# 特定の環境を指定してデプロイ
+gh workflow run deploy.yml -f environment=production
+
+# CIワークフローを手動実行
+gh workflow run ci.yml
+```
+
+### 自動デプロイ
+- `master`ブランチへのプッシュで自動デプロイ
+- `feature/remix-workers-migration`ブランチへのプッシュでも自動デプロイ
 
 ---
 更新ルール:

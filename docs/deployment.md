@@ -44,14 +44,39 @@ In the Cloudflare Pages dashboard, add the following environment variables:
 
 The D1 database binding is automatically configured through `wrangler.toml`.
 
+## Deployment Policy
+
+**重要**: 本プロジェクトでは手動の`wrangler deploy`は使用せず、すべてGitHub ActionsでCloudflare Pagesにデプロイします。
+
 ## Manual Deployment
 
-### Build and Deploy
+### GitHub CLIを使用した手動デプロイ
 
 ```bash
-cd web
-npm run build
-npx wrangler pages deploy remix/build/client --project-name=exvs-tournaments
+# デプロイワークフローを手動実行
+gh workflow run deploy.yml
+
+# 特定の環境を指定してデプロイ
+gh workflow run deploy.yml -f environment=production
+
+# CIワークフローを手動実行
+gh workflow run ci.yml
+
+# 特定のテストタイプを指定
+gh workflow run ci.yml -f test_type=typecheck
+```
+
+### ワークフロー実行状況の確認
+
+```bash
+# 実行中のワークフローを確認
+gh run list
+
+# 特定のワークフローの実行状況を確認
+gh run list --workflow=deploy.yml
+
+# 実行ログを確認
+gh run view <run-id>
 ```
 
 ## Automated Deployment (CI/CD)
@@ -61,11 +86,13 @@ The project uses GitHub Actions for automated deployment:
 - **CI Workflow** (`.github/workflows/ci.yml`): Runs on all pushes and PRs
   - Type checking with `npm run check`
   - Unit tests with `npm run test`
+  - 手動実行可能（`workflow_dispatch`）
 
 - **Deploy Workflow** (`.github/workflows/deploy.yml`): Runs on master branch pushes
   - Runs all CI checks
   - Builds the application
   - Deploys to Cloudflare Pages
+  - 手動実行可能（`workflow_dispatch`）
 
 ### Required GitHub Secrets
 
