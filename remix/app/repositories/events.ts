@@ -42,6 +42,8 @@ export const listEvents = (): EventRecord[] => {
 	});
 };
 
+import { generateUUID } from '~/utils/uuid';
+
 export const createEvent = (data: EventData): EventRecord => {
 	const name = data.name?.trim();
 	if (!name) {
@@ -49,7 +51,7 @@ export const createEvent = (data: EventData): EventRecord => {
 	}
 
 	const desiredSlug = slugify(data.slug ?? name);
-	const id = normalizeId(data.id) || crypto.randomUUID();
+	const id = normalizeId(data.id) || generateUUID();
 
 	if (store.has(id)) {
 		throw new Error('Event ID already exists');

@@ -501,7 +501,9 @@ export function getDatabase(context: AppLoadContext, options: DatabaseOptions = 
 	const shouldUseMemory =
 		typeof options.useMemory === "boolean" ? options.useMemory : envPreference === "true";
 
-	if (shouldUseMemory) {
+	// 開発環境では常にメモリストアを使用
+	if (shouldUseMemory || process.env.NODE_ENV === 'development') {
+		console.log("[database] Using in-memory repositories");
 		return createMemoryDatabase();
 	}
 

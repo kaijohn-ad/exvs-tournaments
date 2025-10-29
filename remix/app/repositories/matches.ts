@@ -1,3 +1,5 @@
+import { generateUUID } from '~/utils/uuid';
+
 export interface MatchData {
 	context: 'bracket' | 'teamBattle' | 'tiebreak';
 	context_id: string;
@@ -65,7 +67,7 @@ export const listMatches = (contextType?: string, contextId?: string): MatchReco
 };
 
 export const createMatch = (data: MatchData): MatchRecord => {
-	const id = crypto.randomUUID();
+	const id = generateUUID();
 	const now = new Date().toISOString();
 
 	const record: MatchRecord = {
@@ -145,7 +147,7 @@ export const setMatches = (matches: MatchImportData[]): MatchRecord[] => {
 			continue;
 		}
 
-		const id = match.id ?? crypto.randomUUID();
+		const id = match.id ?? generateUUID();
 		const record: MatchRecord = {
 			id,
 			context: match.context,

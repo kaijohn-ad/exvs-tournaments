@@ -1,6 +1,6 @@
 # Boost Bracket TODO一覧
 
-最終更新: 2025-10-29 (Kai session - update 7)
+最終更新: 2025-10-29 (Kai session - update 8)
 
 ## ✅ 完了済み
 - [x] SvelteKit プロジェクト初期化と Cloudflare アダプタ設定
@@ -138,14 +138,22 @@
   - [ ] 既存コードの移行（優先度: 高）
     - [x] 管理トップ `/admin` の Remix 版下書き（イベント一覧・作成フォーム）
     - [x] プレイヤー管理 `/admin/events/{eventId}/entries/players` を Remix 実装
+      - ⚠️ 本番環境でエラー発生（データベース接続の問題の可能性）
     - [x] ペア管理 `/admin/events/{eventId}/entries/pairs` を Remix 移植
+      - ⚠️ 本番環境でエラー発生（データベース接続の問題の可能性）
     - [x] チーム管理 `/admin/events/{eventId}/entries/teams` を Remix 移植
+      - ⚠️ 本番環境でエラー発生（データベース接続の問題の可能性）
     - [x] 団体戦一覧 `/admin/events/{eventId}/team-battles` を Remix 移植
     - [x] 団体戦詳細 `/admin/events/{eventId}/team-battles/{battleId}` を Remix 移植
       - Remix ルート `app/routes/admin.events.$eventId.team-battles.$battleId.tsx` を追加し、試合結果入力・削除・確定・タイブレーク処理を移植（2025-10-29）
-    - [ ] 試合ログ `/admin/events/{eventId}/matches` を Remix 移植
+    - [x] 試合ログ `/admin/events/{eventId}/matches` を Remix 移植
+      - Remix ルート `app/routes/admin.events.$eventId.matches.tsx` を実装し、SvelteKit版の全機能を移植（2025-10-29）
+      - ルーティング問題を修正（`admin.tsx`をレイアウトファイルに変更、`admin._index.tsx`に分離）
+      - 本番環境での動作確認完了
     - [ ] 統計表示 `/admin/events/{eventId}/stats` を Remix 移植
+      - ❌ 404エラー（ルートファイルが未実装）
     - [ ] トーナメント設定 `/admin/events/{eventId}/tournaments` を Remix 移植
+      - ❌ 404エラー（ルートファイルが未実装）
     - [ ] ブラケット表示 `/admin/events/{eventId}/tournaments/{tournamentId}/bracket` を Remix 移植
   - [ ] **Phase 2: Next.js + Vercel** (代替案)
   - [ ] Next.jsプロジェクトの作成

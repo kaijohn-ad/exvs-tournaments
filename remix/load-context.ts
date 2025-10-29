@@ -27,8 +27,17 @@ declare module "@remix-run/cloudflare" {
 export function getLoadContext({ context }: GetLoadContextArgs): RemixAppLoadContext {
 	const { cloudflare } = context;
 
+	// 開発環境ではメモリストアを使用
+	const useMemoryStore = process.env.USE_MEMORY_STORE === 'true' || !cloudflare.env.DB;
+
 	return {
-		cloudflare,
+		cloudflare: {
+			...cloudflare,
+			env: {
+				...cloudflare.env,
+				USE_MEMORY_STORE: useMemoryStore ? 'true' : 'false',
+			},
+		},
 		db: cloudflare.env.DB,
 	};
 }
