@@ -141,7 +141,8 @@
     - [x] ペア管理 `/admin/events/{eventId}/entries/pairs` を Remix 移植
     - [x] チーム管理 `/admin/events/{eventId}/entries/teams` を Remix 移植
     - [x] 団体戦一覧 `/admin/events/{eventId}/team-battles` を Remix 移植
-    - [ ] 団体戦詳細 `/admin/events/{eventId}/team-battles/{battleId}` を Remix 移植
+    - [x] 団体戦詳細 `/admin/events/{eventId}/team-battles/{battleId}` を Remix 移植
+      - Remix ルート `app/routes/admin.events.$eventId.team-battles.$battleId.tsx` を追加し、試合結果入力・削除・確定・タイブレーク処理を移植（2025-10-29）
     - [ ] 試合ログ `/admin/events/{eventId}/matches` を Remix 移植
     - [ ] 統計表示 `/admin/events/{eventId}/stats` を Remix 移植
     - [ ] トーナメント設定 `/admin/events/{eventId}/tournaments` を Remix 移植
