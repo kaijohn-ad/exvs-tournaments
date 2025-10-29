@@ -115,7 +115,7 @@ export default function AdminIndex() {
 		if (actionData?.events) {
 			return actionData.events;
 		}
-		return initialEvents;
+		return initialEvents || [];
 	}, [actionData, initialEvents]);
 
 	useEffect(() => {
