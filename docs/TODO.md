@@ -241,10 +241,10 @@
   - [x] wrangler.toml/wrangler.json の環境別設定更新
   - [x] Preview/Production環境へのマイグレーション適用
   - [x] ドキュメント更新（Preview/Production前提に変更）
-- [ ] Cloudflare Pages の環境別デプロイ設定確認
-  - [ ] Productionブランチ設定確認（`feature/remix-workers-migration` → 移行完了後 `master`）
-  - [ ] Previewブランチ設定確認（上記以外の全ブランチ）
-  - [ ] 環境変数の環境別設定確認
+- [x] Cloudflare Pages の環境別デプロイ設定確認
+  - [x] Productionブランチ設定確認（`feature/remix-workers-migration` → 移行完了後 `master`）
+  - [x] Previewブランチ設定確認（上記以外の全ブランチ）
+  - [x] 環境変数の環境別設定確認
 - [ ] 環境別データベース設定の実装
   - [x] Cloudflare Pages の環境（Preview/Production）による自動DB選択（`wrangler.toml` で設定済み）
   - [ ] データベース接続の環境別ログ出力

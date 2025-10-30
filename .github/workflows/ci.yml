@@ -1,10 +1,8 @@
 name: CI
 
 on:
-  push:
-    branches: [ master ]
-  pull_request:
-    branches: [ master ]
+  push: {}
+  pull_request: {}
   workflow_dispatch:
     inputs:
       test_type:
@@ -27,18 +25,18 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version-file: 'web/.nvmrc'
+        node-version-file: 'remix/.nvmrc'
         cache: 'npm'
-        cache-dependency-path: 'web/package-lock.json'
+        cache-dependency-path: 'remix/package-lock.json'
     
     - name: Install dependencies
-      working-directory: ./web
+      working-directory: ./remix
       run: npm ci
     
     - name: Run type check
-      working-directory: ./web
-      run: npm run check
+      working-directory: ./remix
+      run: npm run typecheck
     
     - name: Run tests
-      working-directory: ./web
+      working-directory: ./remix
       run: npm run test
