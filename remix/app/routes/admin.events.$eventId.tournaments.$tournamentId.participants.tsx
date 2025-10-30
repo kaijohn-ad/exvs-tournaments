@@ -29,13 +29,13 @@ type LoaderData = {
 type ActionData =
 	| {
 			type: "success";
-			source: "addPair" | "addSolo" | "remove" | "setSeed";
+			source: "addPair" | "addSolo" | "remove" | "setSeed" | "pairManual" | "pairAuto";
 			message: string;
 			participants: TournamentParticipantRecord[];
 	  }
 	| {
 			type: "error";
-			source: "addPair" | "addSolo" | "remove" | "setSeed";
+			source: "addPair" | "addSolo" | "remove" | "setSeed" | "pairManual" | "pairAuto";
 			message: string;
 	  };
 
@@ -110,6 +110,8 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 		| "addSolo"
 		| "remove"
 		| "setSeed"
+		| "pairManual"
+		| "pairAuto"
 		| undefined;
 
 	try {
@@ -248,6 +250,113 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 			});
 		}
 
+		if (intent === "pairManual") {
+			if (tournament.entryMode !== "solo") {
+				return json<ActionData>(
+					{
+						type: "error",
+						source: "pairManual",
+						message: "手動ペアリングは個別参加モードでのみ利用できます。",
+					},
+					{ status: 400 }
+				);
+			}
+
+			const player1Id = normalizeText(formData.get("player1Id"));
+			const player2Id = normalizeText(formData.get("player2Id"));
+
+			if (!player1Id || !player2Id) {
+				return json<ActionData>(
+					{
+						type: "error",
+						source: "pairManual",
+						message: "プレイヤーを2名選択してください。",
+					},
+					{ status: 400 }
+				);
+			}
+
+			if (player1Id === player2Id) {
+				return json<ActionData>(
+					{
+						type: "error",
+						source: "pairManual",
+						message: "同じプレイヤーをペアにすることはできません。",
+					},
+					{ status: 400 }
+				);
+			}
+
+			// 既存ペアをチェック
+			const existingPairs = await db.pairs.listPairs(eventId);
+			const existingPair = existingPairs.find(
+				p =>
+					(p.player1_id === player1Id && p.player2_id === player2Id) ||
+					(p.player1_id === player2Id && p.player2_id === player1Id)
+			);
+
+			if (!existingPair) {
+				// 新規ペアを作成
+				await db.pairs.createPair(eventId, {
+					player1_id: player1Id,
+					player2_id: player2Id
+				});
+			}
+
+			const participants = await db.tournamentParticipants.listParticipants(tournamentId);
+
+			return json<ActionData>({
+				type: "success",
+				source: "pairManual",
+				message: existingPair ? "既存のペアが見つかりました。" : "ペアを作成しました。",
+				participants,
+			});
+		}
+
+		if (intent === "pairAuto") {
+			if (tournament.entryMode !== "solo") {
+				return json<ActionData>(
+					{
+						type: "error",
+						source: "pairAuto",
+						message: "自動ペアリングは個別参加モードでのみ利用できます。",
+					},
+					{ status: 400 }
+				);
+			}
+
+			try {
+				const { pairSoloParticipants } = await import('~/repositories/solo-pairing');
+				await pairSoloParticipants(
+					eventId,
+					tournamentId,
+					{
+						listParticipants: (tid) => db.tournamentParticipants.listParticipants(tid),
+						listPairs: (eid) => db.pairs.listPairs(eid),
+						createPair: (eid, data) => db.pairs.createPair(eid, data)
+					}
+				);
+
+				const participants = await db.tournamentParticipants.listParticipants(tournamentId);
+
+				return json<ActionData>({
+					type: "success",
+					source: "pairAuto",
+					message: "自動ペアリングを実行しました。",
+					participants,
+				});
+			} catch (error) {
+				return json<ActionData>(
+					{
+						type: "error",
+						source: "pairAuto",
+						message: error instanceof Error ? error.message : "自動ペアリングに失敗しました。",
+					},
+					{ status: 400 }
+				);
+			}
+		}
+
 		return json<ActionData>(
 			{
 				type: "error",
@@ -354,6 +463,85 @@ export default function TournamentParticipantsRoute() {
 				<h2 className="text-lg font-semibold text-slate-900 mb-4">
 					{entryMode === "pair" ? "ペアを追加" : "プレイヤーを追加"}
 				</h2>
+				
+				{entryMode === "solo" && (
+					<div className="mb-6 rounded-lg border border-blue-200 bg-blue-50 p-4">
+						<h3 className="text-sm font-semibold text-blue-900 mb-2">ペアリング機能</h3>
+						<p className="text-xs text-blue-700 mb-4">
+							個別参加モードでは、ブラケット生成前に参加者を2人1組のペアに組み合わせる必要があります。
+						</p>
+						
+						{/* 手動ペアリング */}
+						<div className="mb-4 rounded border border-blue-100 bg-white p-3">
+							<h4 className="text-sm font-medium text-slate-700 mb-2">手動ペアリング</h4>
+							<Form method="post" className="space-y-3">
+								<input type="hidden" name="_intent" value="pairManual" />
+								<div className="grid grid-cols-2 gap-3">
+									<div>
+										<label className="block text-xs font-medium text-slate-600 mb-1">
+											プレイヤー1
+										</label>
+										<select
+											name="player1Id"
+											required
+											className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+										>
+											<option value="">選択してください</option>
+											{loaderData.players.map((player) => (
+												<option key={player.id} value={player.id}>
+													{player.name}
+												</option>
+											))}
+										</select>
+									</div>
+									<div>
+										<label className="block text-xs font-medium text-slate-600 mb-1">
+											プレイヤー2
+										</label>
+										<select
+											name="player2Id"
+											required
+											className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+										>
+											<option value="">選択してください</option>
+											{loaderData.players.map((player) => (
+												<option key={player.id} value={player.id}>
+													{player.name}
+												</option>
+											))}
+										</select>
+									</div>
+								</div>
+								<button
+									type="submit"
+									disabled={isSubmitting}
+									className="w-full rounded bg-blue-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-blue-700 disabled:opacity-50"
+								>
+									{isSubmitting ? "処理中..." : "ペアを作成"}
+								</button>
+							</Form>
+						</div>
+						
+						{/* 自動ペアリング */}
+						<div className="rounded border border-green-100 bg-white p-3">
+							<h4 className="text-sm font-medium text-slate-700 mb-2">自動ペアリング</h4>
+							<p className="text-xs text-slate-600 mb-3">
+								参加登録済みの個別参加者を自動的に2人1組にペアリングします。
+								既存のペアは優先的に再利用されます。
+							</p>
+							<Form method="post">
+								<input type="hidden" name="_intent" value="pairAuto" />
+								<button
+									type="submit"
+									disabled={isSubmitting}
+									className="w-full rounded bg-green-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-green-700 disabled:opacity-50"
+								>
+									{isSubmitting ? "処理中..." : "自動ペアリングを実行"}
+								</button>
+							</Form>
+						</div>
+					</div>
+				)}
 				<Form method="post" className="space-y-4">
 					{entryMode === "pair" ? (
 						<>

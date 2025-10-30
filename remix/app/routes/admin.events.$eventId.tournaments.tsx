@@ -14,6 +14,7 @@ import {
 } from "@remix-run/cloudflare";
 import { getDatabase } from "~/repositories/database.server";
 import type { TournamentRecord } from "~/repositories/tournaments";
+import type { PairRecord } from "~/repositories/pairs";
 import { generateAndStoreSingleEliminationBracket } from "~/repositories/bracket-generator";
 
 type LoaderData = {
@@ -432,35 +433,91 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 			);
 		}
 
-		// Check entry mode
-		if (tournament.entryMode !== 'pair') {
-			const tournaments = await db.tournaments.listTournaments(eventId);
-			const sortedTournaments = [...tournaments].sort((a, b) => a.name.localeCompare(b.name, 'ja'));
-			return json<ActionData>(
-				{
-					type: "error",
-					source: "generate",
-					message: "ブラケット生成はペア参加モードでのみ利用できます。",
-					tournaments: sortedTournaments,
-					tournamentsJson: JSON.stringify(sortedTournaments, null, 2),
-					tournamentId
-				},
-				{ status: 400 }
-			);
-		}
-
-		// Get participants (pairs only)
-		const participants = await db.tournamentParticipants.listParticipants(tournamentId);
-		const pairParticipants = participants.filter(p => p.participant_type === 'pair');
+		// Check entry mode and prepare pairs for bracket generation
+		let pairsWithSeed: PairRecord[];
 		
-		if (pairParticipants.length < 2) {
+		if (tournament.entryMode === 'pair') {
+			// Pair mode: use existing pairs
+			const participants = await db.tournamentParticipants.listParticipants(tournamentId);
+			const pairParticipants = participants.filter(p => p.participant_type === 'pair');
+			
+			if (pairParticipants.length < 2) {
+				const tournaments = await db.tournaments.listTournaments(eventId);
+				const sortedTournaments = [...tournaments].sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+				return json<ActionData>(
+					{
+						type: "error",
+						source: "generate",
+						message: "ブラケットを生成するには、少なくとも2組のペアが参加登録されている必要があります。",
+						tournaments: sortedTournaments,
+						tournamentsJson: JSON.stringify(sortedTournaments, null, 2),
+						tournamentId
+					},
+					{ status: 400 }
+				);
+			}
+
+			// Resolve PairRecord[] from participants
+			const pairIds = pairParticipants.map(p => p.pair_id).filter((id): id is string => id !== null);
+			const allPairs = await db.pairs.listPairs(eventId);
+			const pairs = pairIds.map(pairId => {
+				const pair = allPairs.find(p => p.id === pairId);
+				if (!pair) {
+					throw new Error(`ペアが見つかりません: ${pairId}`);
+				}
+				return pair;
+			});
+
+			// Use seed from participant if available, otherwise use pair seed
+			pairsWithSeed = pairs.map(pair => {
+				const participant = pairParticipants.find(p => p.pair_id === pair.id);
+				return {
+					...pair,
+					seed: participant?.seed ?? pair.seed
+				};
+			});
+		} else if (tournament.entryMode === 'solo') {
+			// Solo mode: pair solo participants
+			try {
+				const { pairSoloParticipants } = await import('~/repositories/solo-pairing');
+				const pairs = await pairSoloParticipants(
+					eventId,
+					tournamentId,
+					{
+						listParticipants: (tid) => db.tournamentParticipants.listParticipants(tid),
+						listPairs: (eid) => db.pairs.listPairs(eid),
+						createPair: (eid, data) => db.pairs.createPair(eid, data)
+					}
+				);
+				
+				// Use pair seed (solo participants don't have seed)
+				pairsWithSeed = pairs.map(pair => ({
+					...pair,
+					seed: pair.seed
+				}));
+			} catch (error) {
+				const tournaments = await db.tournaments.listTournaments(eventId);
+				const sortedTournaments = [...tournaments].sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+				return json<ActionData>(
+					{
+						type: "error",
+						source: "generate",
+						message: error instanceof Error ? error.message : "ブラケット生成に失敗しました。",
+						tournaments: sortedTournaments,
+						tournamentsJson: JSON.stringify(sortedTournaments, null, 2),
+						tournamentId
+					},
+					{ status: 400 }
+				);
+			}
+		} else {
 			const tournaments = await db.tournaments.listTournaments(eventId);
 			const sortedTournaments = [...tournaments].sort((a, b) => a.name.localeCompare(b.name, 'ja'));
 			return json<ActionData>(
 				{
 					type: "error",
 					source: "generate",
-					message: "ブラケットを生成するには、少なくとも2組のペアが参加登録されている必要があります。",
+					message: "ブラケット生成はペア参加モードまたは個別参加モードでのみ利用できます。",
 					tournaments: sortedTournaments,
 					tournamentsJson: JSON.stringify(sortedTournaments, null, 2),
 					tournamentId
@@ -468,26 +525,6 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 				{ status: 400 }
 			);
 		}
-
-		// Resolve PairRecord[] from participants
-		const pairIds = pairParticipants.map(p => p.pair_id).filter((id): id is string => id !== null);
-		const allPairs = await db.pairs.listPairs(eventId);
-		const pairs = pairIds.map(pairId => {
-			const pair = allPairs.find(p => p.id === pairId);
-			if (!pair) {
-				throw new Error(`ペアが見つかりません: ${pairId}`);
-			}
-			return pair;
-		});
-
-		// Use seed from participant if available, otherwise use pair seed
-		const pairsWithSeed = pairs.map(pair => {
-			const participant = pairParticipants.find(p => p.pair_id === pair.id);
-			return {
-				...pair,
-				seed: participant?.seed ?? pair.seed
-			};
-		});
 
 		const seedingMode = tournament.seedingMode ?? 'random';
 		if (tournament.format && tournament.format !== 'single-elimination') {
@@ -841,19 +878,40 @@ export default function TournamentsRoute() {
 
 									{(() => {
 										const isSoloMode = tournament.entryMode === 'solo';
+										const participantCount = participantCounts[tournament.id] ?? 0;
+										const canGenerateBracket = isSoloMode
+											? participantCount >= 2 && participantCount % 2 === 0
+											: participantCount >= 2 && participantCount % 2 === 0;
+										const isDisabled = isSubmitting || !canGenerateBracket;
+										
+										let disabledTitle: string | undefined;
+										if (isSoloMode) {
+											if (participantCount < 2) {
+												disabledTitle = 'ブラケット生成には少なくとも2名の参加者が必要です';
+											} else if (participantCount % 2 !== 0) {
+												disabledTitle = 'ブラケット生成には参加者数が偶数である必要があります。参加者を追加または削除してください。';
+											}
+										} else {
+											if (participantCount < 2) {
+												disabledTitle = 'ブラケット生成には少なくとも2組のペアが必要です';
+											} else if (participantCount % 2 !== 0) {
+												disabledTitle = 'ブラケット生成にはペア数が偶数である必要があります';
+											}
+										}
+										
 										return (
 											<Form method="post" className="inline">
 												<input type="hidden" name="_intent" value="generate" />
 												<input type="hidden" name="tournamentId" value={tournament.id} />
 												<button
 													type="submit"
-													disabled={isSubmitting || isSoloMode}
+													disabled={isDisabled}
 													className={`rounded-lg px-3 py-1 text-xs font-medium text-white transition disabled:opacity-50 ${
-														isSoloMode
+														isDisabled
 															? 'bg-slate-400 cursor-not-allowed'
 															: 'bg-green-600 hover:bg-green-700'
 													}`}
-													title={isSoloMode ? 'ブラケット生成はペア参加モードでのみ利用できます' : undefined}
+													title={disabledTitle}
 												>
 													{isSubmitting ? '生成中…' : 'ブラケット生成'}
 												</button>
