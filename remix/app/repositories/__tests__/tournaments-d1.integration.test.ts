@@ -62,6 +62,21 @@ describe("Tournaments D1 Integration Tests", () => {
 		expect(createdTournament.name).toBe(tournamentData.name);
 		expect(createdTournament.format).toBe("single-elimination");
 		expect(createdTournament.seedingMode).toBe("random");
+		expect(createdTournament.entryMode).toBe("pair");
+	});
+
+	test("should create tournament with entry mode", async () => {
+		const database = getTestDatabaseContext();
+
+		const tournamentData = {
+			name: "Solo Tournament",
+			entryMode: "solo" as const
+		};
+
+		const createdTournament = await database.tournaments.createTournament(eventId, tournamentData);
+		
+		expect(createdTournament).toBeDefined();
+		expect(createdTournament.entryMode).toBe("solo");
 	});
 
 	test("should update tournament", async () => {
@@ -78,7 +93,8 @@ describe("Tournaments D1 Integration Tests", () => {
 		const updateData = {
 			name: "Updated Tournament Name",
 			format: "single-elimination" as const,
-			seedingMode: "manual" as const
+			seedingMode: "manual" as const,
+			entryMode: "solo" as const
 		};
 
 		const updatedTournament = await database.tournaments.updateTournament(createdTournament.id, updateData);
@@ -86,6 +102,7 @@ describe("Tournaments D1 Integration Tests", () => {
 		expect(updatedTournament).toBeDefined();
 		expect(updatedTournament.name).toBe(updateData.name);
 		expect(updatedTournament.seedingMode).toBe(updateData.seedingMode);
+		expect(updatedTournament.entryMode).toBe(updateData.entryMode);
 		expect(updatedTournament.id).toBe(createdTournament.id);
 
 		// 更新されたトーナメントが正しく取得できることを確認

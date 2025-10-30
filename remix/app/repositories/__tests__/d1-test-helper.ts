@@ -83,7 +83,17 @@ function createMockD1Database() {
 							return row.context === boundParams[0] && (!sql.includes('AND context_id = ?') || row.context_id === boundParams[1]);
 						}
 						if (sql.includes('tournament_id = ?') && boundParams.length > 0) {
-							return row.tournament_id === boundParams[0];
+							let result = row.tournament_id === boundParams[0];
+							if (sql.includes("status = 'active'")) {
+								result = result && row.status === 'active';
+							}
+							if (sql.includes('AND pair_id = ?') && boundParams.length > 1) {
+								result = result && row.pair_id === boundParams[1];
+							}
+							if (sql.includes('AND player_id = ?') && boundParams.length > 1) {
+								result = result && row.player_id === boundParams[1];
+							}
+							return result;
 						}
 					if (sql.includes('player_id = ?')) {
 						// getPlayerStats: player_id=?, scope=?, scope_id IS ?
@@ -118,6 +128,17 @@ function createMockD1Database() {
 				if (/ORDER BY seed ASC/i.test(sql)) {
 					results.sort((a, b) => (a.seed ?? Number.MAX_SAFE_INTEGER) - (b.seed ?? Number.MAX_SAFE_INTEGER) || String(a.id).localeCompare(String(b.id)));
 				}
+				if (/ORDER BY.*CASE WHEN seed IS NULL THEN 1 ELSE 0 END.*seed ASC.*created_at ASC/i.test(sql)) {
+					results.sort((a, b) => {
+						const an = a.seed === null || a.seed === undefined ? 1 : 0;
+						const bn = b.seed === null || b.seed === undefined ? 1 : 0;
+						if (an !== bn) return an - bn;
+						const as = a.seed ?? Number.MAX_SAFE_INTEGER;
+						const bs = b.seed ?? Number.MAX_SAFE_INTEGER;
+						if (as !== bs) return as - bs;
+						return String(a.created_at).localeCompare(String(b.created_at));
+					});
+				}
 				if (/ORDER BY created_at DESC/i.test(sql)) {
 					results.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
 				}
@@ -144,6 +165,10 @@ function createMockD1Database() {
 				return { results };
 			};
 			const makeFirst = async () => {
+				if (/SELECT COUNT\(\*\)/i.test(sql)) {
+					const all = await makeAll();
+					return { count: all.results?.length ?? 0 };
+				}
 				const all = await makeAll();
 				return (all.results && all.results[0]) || null;
 			};
@@ -299,6 +324,44 @@ async function executeSQL(sql: string, params: any[], tables: Map<string, Map<st
 		} else if (tableName === 'player_stats') {
 			// bind(id, scope, scope_id, player_id, wins, losses, now)
 			table.set(id, { id, scope: params[1] || '', scope_id: params[2] ?? null, player_id: params[3] || '', wins: params[4] ?? 0, losses: params[5] ?? 0, last_updated_at: now });
+		} else if (tableName === 'tournament_participants') {
+			// INSERT INTO tournament_participants (id, tournament_id, participant_type, pair_id, player_id, seed, note, status, created_at)
+			// VALUES (?, ?, 'pair', ?, NULL, ?, ?, 'active', ?)
+			// bind(id, tournamentId, pairId, seed, note, createdAt) -> params[0]=id, params[1]=tournamentId, params[2]=pairId, params[3]=seed, params[4]=note, params[5]=createdAt
+			// or VALUES (?, ?, 'solo', NULL, ?, NULL, ?, 'active', ?)
+			// bind(id, tournamentId, playerId, note, createdAt) -> params[0]=id, params[1]=tournamentId, params[2]=playerId, params[3]=note, params[4]=createdAt
+			const tournaments = tables.get('tournaments');
+			if (!tournaments || !tournaments.has(params[1])) throw new Error('FK violation: tournament not found');
+			
+			// SQLからparticipant_typeを判定（'pair'または'solo'が含まれているか）
+			const isPair = sql.includes("'pair'");
+			let record: any = {
+				id,
+				tournament_id: params[1],
+				participant_type: isPair ? 'pair' : 'solo',
+				status: 'active',
+				created_at: params[params.length - 1] ?? now
+			};
+			
+			if (isPair) {
+				// params[0]=id, params[1]=tournamentId, params[2]=pairId, params[3]=seed, params[4]=note, params[5]=createdAt
+				const pairs = tables.get('pairs');
+				if (!pairs || !pairs.has(params[2])) throw new Error('FK violation: pair not found');
+				record.pair_id = params[2];
+				record.player_id = null;
+				record.seed = params[3] ?? null;
+				record.note = params[4] ?? null;
+			} else {
+				// params[0]=id, params[1]=tournamentId, params[2]=playerId, params[3]=note, params[4]=createdAt
+				const players = tables.get('players');
+				if (!players || !players.has(params[2])) throw new Error('FK violation: player not found');
+				record.pair_id = null;
+				record.player_id = params[2];
+				record.seed = null;
+				record.note = params[3] ?? null;
+			}
+			
+			table.set(id, record);
 		} else {
 			// その他のテーブル用の汎用処理
 			table.set(id, { id, ...params.reduce((acc, param, index) => {
@@ -392,6 +455,28 @@ async function executeSQL(sql: string, params: any[], tables: Map<string, Map<st
 			const [scope, scope_id, player_id, wins, losses, last_updated_at, id] = params;
 			const existing = table.get(id);
 			if (existing) table.set(id, { ...existing, scope, scope_id, player_id, wins, losses, last_updated_at });
+		} else if (tableName === 'tournament_participants' && /SET status = 'removed' WHERE id = \? AND tournament_id = \? AND status = 'active'/i.test(sql)) {
+			const [id, tournamentId] = params;
+			const existing = table.get(id);
+			if (existing && existing.tournament_id === tournamentId && existing.status === 'active') {
+				table.set(id, { ...existing, status: 'removed' });
+			}
+		} else if (tableName === 'tournament_participants' && /SET seed = \? WHERE id = \? AND tournament_id = \?/i.test(sql)) {
+			const [seed, id, tournamentId] = params;
+			const existing = table.get(id);
+			if (existing && existing.tournament_id === tournamentId) {
+				table.set(id, { ...existing, seed: seed ?? null });
+			}
+		} else if (tableName === 'tournament_participants' && /SET note = \? WHERE id = \? AND tournament_id = \?/i.test(sql)) {
+			const [note, id, tournamentId] = params;
+			const existing = table.get(id);
+			if (existing && existing.tournament_id === tournamentId) {
+				table.set(id, { ...existing, note: note?.trim() ?? null });
+			}
+		} else if (tableName === 'tournaments' && /SET name = \?, format = \?, seeding_mode = \?, entry_mode = \? WHERE id = \?/i.test(sql)) {
+			const [name, format, seeding_mode, entry_mode, id] = params;
+			const existing = table.get(id);
+			if (existing) table.set(id, { ...existing, name, format, seeding_mode, entry_mode });
 		}
 	} else if (sql.toUpperCase().includes('DELETE FROM')) {
 		if (sql.includes('WHERE tournament_id = ?') && params.length > 0) {
@@ -452,8 +537,28 @@ async function initializeTestSchema(db: D1Database) {
 			name TEXT NOT NULL,
 			format TEXT NOT NULL DEFAULT 'single-elimination',
 			seeding_mode TEXT NOT NULL DEFAULT 'random',
+			entry_mode TEXT NOT NULL DEFAULT 'pair' CHECK(entry_mode IN ('pair','solo')),
 			created_at TEXT NOT NULL DEFAULT (datetime('now')),
 			FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
+		);
+
+		CREATE TABLE IF NOT EXISTS tournament_participants (
+			id TEXT PRIMARY KEY,
+			tournament_id TEXT NOT NULL,
+			participant_type TEXT NOT NULL CHECK(participant_type IN ('pair','solo')),
+			pair_id TEXT,
+			player_id TEXT,
+			seed INTEGER,
+			note TEXT,
+			status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','removed')),
+			created_at TEXT NOT NULL DEFAULT (datetime('now')),
+			FOREIGN KEY (tournament_id) REFERENCES tournaments(id) ON DELETE CASCADE,
+			FOREIGN KEY (pair_id) REFERENCES pairs(id) ON DELETE CASCADE,
+			FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE CASCADE,
+			UNIQUE(tournament_id, pair_id),
+			UNIQUE(tournament_id, player_id),
+			CHECK( (participant_type='pair' AND pair_id IS NOT NULL AND player_id IS NULL)
+				OR (participant_type='solo' AND player_id IS NOT NULL AND pair_id IS NULL) )
 		);
 
 		CREATE TABLE IF NOT EXISTS teams (

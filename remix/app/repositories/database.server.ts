@@ -11,6 +11,7 @@ import * as teamBattleSlotsMemory from "./team-battle-slots";
 import * as matchesMemory from "./matches";
 import * as bracketMatchesMemory from "./bracket-matches";
 import * as playerStatsMemory from "./player-stats";
+import * as tournamentParticipantsMemory from "./tournament-participants";
 import { createEventsRepositoryD1 } from "./events-d1";
 import { createPlayersRepositoryD1 } from "./players-d1";
 import { createTournamentsRepositoryD1 } from "./tournaments-d1";
@@ -21,6 +22,7 @@ import { createTeamBattleSlotsRepositoryD1 } from "./team-battle-slots-d1";
 import { createMatchesRepositoryD1 } from "./matches-d1";
 import { createBracketMatchesRepositoryD1 } from "./bracket-matches-d1";
 import { createPlayerStatsRepositoryD1 } from "./player-stats-d1";
+import { createTournamentParticipantsRepositoryD1 } from "./tournament-participants-d1";
 
 export interface DatabaseContext {
 	events: {
@@ -202,6 +204,35 @@ export interface DatabaseContext {
 		setPlayerStats(
 			stats: playerStatsMemory.PlayerStatsImportData[]
 		): Promise<playerStatsMemory.PlayerStatsRecord[]>;
+	};
+	tournamentParticipants: {
+		listParticipants(tournamentId: string): Promise<tournamentParticipantsMemory.TournamentParticipantRecord[]>;
+		count(tournamentId: string): Promise<number>;
+		addPair(
+			tournamentId: string,
+			pairId: string,
+			opts?: { seed?: number | null; note?: string | null }
+		): Promise<tournamentParticipantsMemory.TournamentParticipantRecord>;
+		addSolo(
+			tournamentId: string,
+			playerId: string,
+			opts?: { note?: string | null }
+		): Promise<tournamentParticipantsMemory.TournamentParticipantRecord>;
+		removeById(tournamentId: string, participantId: string): Promise<void>;
+		setSeed(
+			tournamentId: string,
+			participantId: string,
+			seed: number | null
+		): Promise<tournamentParticipantsMemory.TournamentParticipantRecord>;
+		setNote(
+			tournamentId: string,
+			participantId: string,
+			note: string | null
+		): Promise<tournamentParticipantsMemory.TournamentParticipantRecord>;
+		ensureParticipant(
+			tournamentId: string,
+			participantId: string
+		): Promise<tournamentParticipantsMemory.TournamentParticipantRecord>;
 	};
 }
 
@@ -475,6 +506,33 @@ const wrapMemoryPlayerStats = () => ({
 	},
 });
 
+const wrapMemoryTournamentParticipants = () => ({
+	async listParticipants(tournamentId: string) {
+		return tournamentParticipantsMemory.listParticipants(tournamentId);
+	},
+	async count(tournamentId: string) {
+		return tournamentParticipantsMemory.count(tournamentId);
+	},
+	async addPair(tournamentId: string, pairId: string, opts?: { seed?: number | null; note?: string | null }) {
+		return tournamentParticipantsMemory.addPair(tournamentId, pairId, opts);
+	},
+	async addSolo(tournamentId: string, playerId: string, opts?: { note?: string | null }) {
+		return tournamentParticipantsMemory.addSolo(tournamentId, playerId, opts);
+	},
+	async removeById(tournamentId: string, participantId: string) {
+		return tournamentParticipantsMemory.removeById(tournamentId, participantId);
+	},
+	async setSeed(tournamentId: string, participantId: string, seed: number | null) {
+		return tournamentParticipantsMemory.setSeed(tournamentId, participantId, seed);
+	},
+	async setNote(tournamentId: string, participantId: string, note: string | null) {
+		return tournamentParticipantsMemory.setNote(tournamentId, participantId, note);
+	},
+	async ensureParticipant(tournamentId: string, participantId: string) {
+		return tournamentParticipantsMemory.ensureParticipant(tournamentId, participantId);
+	},
+});
+
 const createMemoryDatabase = (): DatabaseContext => ({
 	events: wrapMemoryEvents(),
 	players: wrapMemoryPlayers(),
@@ -486,6 +544,7 @@ const createMemoryDatabase = (): DatabaseContext => ({
 	teamBattleSlots: wrapMemoryTeamBattleSlots(),
 	matches: wrapMemoryMatches(),
 	playerStats: wrapMemoryPlayerStats(),
+	tournamentParticipants: wrapMemoryTournamentParticipants(),
 });
 
 const createD1Database = (db: D1Database): DatabaseContext => ({
@@ -501,6 +560,7 @@ const createD1Database = (db: D1Database): DatabaseContext => ({
 	teamBattleSlots: createTeamBattleSlotsRepositoryD1(db),
 	matches: createMatchesRepositoryD1(db),
 	playerStats: createPlayerStatsRepositoryD1(db),
+	tournamentParticipants: createTournamentParticipantsRepositoryD1(db),
 });
 
 export function getDatabase(context: AppLoadContext, options: DatabaseOptions = {}): DatabaseContext {
@@ -575,4 +635,5 @@ export function resetRepositoriesForTests() {
 	teamBattleSlotsMemory.__resetForTests?.();
 	matchesMemory.__resetForTests?.();
 	playerStatsMemory.__resetForTests?.();
+	tournamentParticipantsMemory.__resetForTests?.();
 }

@@ -3,6 +3,7 @@ import { loader, action } from '../admin.events.$eventId.tournaments';
 import * as tournamentsMemory from '~/repositories/tournaments';
 import * as pairsMemory from '~/repositories/pairs';
 import * as bracketMatchesMemory from '~/repositories/bracket-matches';
+import * as tournamentParticipantsMemory from '~/repositories/tournament-participants';
 
 const EVENT_ID = 'event-1';
 
@@ -249,13 +250,16 @@ describe('admin tournaments route', () => {
 		describe('generate intent', () => {
 			it('generates bracket for tournament', async () => {
 				const tournament = tournamentsMemory.createTournament(EVENT_ID, { name: 'Spring Tournament' });
-				pairsMemory.createPair(EVENT_ID, { player1_id: 'p1', player2_id: 'p2' });
-				pairsMemory.createPair(EVENT_ID, { player1_id: 'p3', player2_id: 'p4' });
+				const pair1 = pairsMemory.createPair(EVENT_ID, { player1_id: 'p1', player2_id: 'p2' });
+				const pair2 = pairsMemory.createPair(EVENT_ID, { player1_id: 'p3', player2_id: 'p4' });
+				
+				// 参加者として登録
+				tournamentParticipantsMemory.addPair(tournament.id, pair1.id);
+				tournamentParticipantsMemory.addPair(tournament.id, pair2.id);
 
 				const formData = createFormData({
 					_intent: 'generate',
 					tournamentId: tournament.id,
-					seedingMode: 'random',
 				});
 
 				const result = await action({

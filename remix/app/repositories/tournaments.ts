@@ -4,6 +4,7 @@ export interface TournamentData {
 	name: string;
 	format?: 'single-elimination';
 	seedingMode?: 'random' | 'manual';
+	entryMode?: 'pair' | 'solo';
 }
 
 export interface TournamentImportData extends TournamentData {
@@ -14,6 +15,7 @@ export interface TournamentRecord extends TournamentData {
 	id: string;
 	eventId: string;
 	createdAt: string;
+	entryMode: 'pair' | 'solo';
 }
 
 const store = new Map<string, Map<string, TournamentRecord>>();
@@ -40,6 +42,7 @@ export const createTournament = (eventId: string, data: TournamentData): Tournam
 		name: data.name.trim(),
 		format: data.format || 'single-elimination',
 		seedingMode: data.seedingMode || 'random',
+		entryMode: data.entryMode || 'pair',
 		createdAt: new Date().toISOString()
 	};
 
@@ -68,7 +71,8 @@ export const updateTournament = (
 		...existing,
 		name: data.name.trim(),
 		format: data.format || existing.format,
-		seedingMode: data.seedingMode || existing.seedingMode
+		seedingMode: data.seedingMode || existing.seedingMode,
+		entryMode: data.entryMode ?? existing.entryMode
 	};
 
 	getEventStore(eventId).set(tournamentId, updated);
@@ -103,6 +107,7 @@ export const setTournaments = (
 			name,
 			format: entry.format || 'single-elimination',
 			seedingMode: entry.seedingMode || 'random',
+			entryMode: entry.entryMode || 'pair',
 			createdAt: new Date().toISOString()
 		};
 
@@ -146,7 +151,8 @@ export const updateTournamentById = (
 		...found.record,
 		name: data.name.trim(),
 		format: data.format || found.record.format,
-		seedingMode: data.seedingMode || found.record.seedingMode
+		seedingMode: data.seedingMode || found.record.seedingMode,
+		entryMode: data.entryMode ?? found.record.entryMode
 	};
 	store.get(found.eventId)!.set(tournamentId, updated);
 	return updated;

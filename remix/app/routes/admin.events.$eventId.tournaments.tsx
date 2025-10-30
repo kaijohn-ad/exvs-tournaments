@@ -61,10 +61,23 @@ export async function loader({ params, context }: LoaderFunctionArgs) {
 	const tournaments = await db.tournaments.listTournaments(eventId);
 	const sortedTournaments = [...tournaments].sort((a, b) => a.name.localeCompare(b.name, 'ja'));
 
-	return json<LoaderData>({
+	// Get participant counts for each tournament
+	const participantCounts = await Promise.all(
+		sortedTournaments.map(async (tournament) => ({
+			tournamentId: tournament.id,
+			count: await db.tournamentParticipants.count(tournament.id)
+		}))
+	);
+
+	const participantCountMap = Object.fromEntries(
+		participantCounts.map(p => [p.tournamentId, p.count])
+	);
+
+	return json<LoaderData & { participantCounts: Record<string, number> }>({
 		eventId,
 		tournaments: sortedTournaments,
 		tournamentsJson: JSON.stringify(sortedTournaments, null, 2),
+		participantCounts: participantCountMap,
 	});
 }
 
@@ -83,6 +96,7 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 		const name = normalizeText(formData.get("name"));
 		const format = normalizeText(formData.get("format")) as 'single-elimination' | undefined;
 		const seedingMode = normalizeText(formData.get("seedingMode")) as 'random' | 'manual' | undefined;
+		const entryMode = normalizeText(formData.get("entryMode")) as 'pair' | 'solo' | undefined;
 
 		if (!name) {
 			const tournaments = await db.tournaments.listTournaments(eventId);
@@ -100,7 +114,7 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 		}
 
 		try {
-			const tournament = await db.tournaments.createTournament(eventId, { name, format, seedingMode });
+			const tournament = await db.tournaments.createTournament(eventId, { name, format, seedingMode, entryMode });
 			const tournaments = await db.tournaments.listTournaments(eventId);
 			const sortedTournaments = [...tournaments].sort((a, b) => a.name.localeCompare(b.name, 'ja'));
 
@@ -133,6 +147,7 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 		const name = normalizeText(formData.get("name"));
 		const format = normalizeText(formData.get("format")) as 'single-elimination' | undefined;
 		const seedingMode = normalizeText(formData.get("seedingMode")) as 'random' | 'manual' | undefined;
+		const entryMode = normalizeText(formData.get("entryMode")) as 'pair' | 'solo' | undefined;
 
 		if (!tournamentId) {
 			const tournaments = await db.tournaments.listTournaments(eventId);
@@ -170,7 +185,26 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 				throw new Response('Tournament not found', { status: 404 });
 			}
 
-			const tournament = await db.tournaments.updateTournament(tournamentId, { name, format, seedingMode });
+			// Check if entry mode is being changed and if there are participants
+			if (entryMode && entryMode !== existing.entryMode) {
+				const participantCount = await db.tournamentParticipants.count(tournamentId);
+				if (participantCount > 0) {
+					const tournaments = await db.tournaments.listTournaments(eventId);
+					const sortedTournaments = [...tournaments].sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+					return json<ActionData>(
+						{
+							type: "error",
+							source: "update",
+							message: `参加モードを変更するには、先に参加者をすべて削除してください（現在${participantCount}名登録されています）。`,
+							tournaments: sortedTournaments,
+							tournamentsJson: JSON.stringify(sortedTournaments, null, 2),
+						},
+						{ status: 400 }
+					);
+				}
+			}
+
+			const tournament = await db.tournaments.updateTournament(tournamentId, { name, format, seedingMode, entryMode });
 			const tournaments = await db.tournaments.listTournaments(eventId);
 			const sortedTournaments = [...tournaments].sort((a, b) => a.name.localeCompare(b.name, 'ja'));
 
@@ -315,11 +349,13 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 					return null;
 				}
 
+				const maybeEntryMode = Reflect.get(entry, 'entryMode');
 				return {
 					id: typeof maybeId === 'string' ? maybeId : undefined,
 					name: maybeName,
 					format: typeof maybeFormat === 'string' ? maybeFormat as 'single-elimination' : undefined,
-					seedingMode: typeof maybeSeedingMode === 'string' ? maybeSeedingMode as 'random' | 'manual' : undefined
+					seedingMode: typeof maybeSeedingMode === 'string' ? maybeSeedingMode as 'random' | 'manual' : undefined,
+					entryMode: typeof maybeEntryMode === 'string' ? maybeEntryMode as 'pair' | 'solo' : undefined
 				};
 			})
 			.filter(Boolean);
@@ -357,7 +393,6 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 
 	if (intent === "generate") {
 		const tournamentId = normalizeText(formData.get("tournamentId"));
-		const seedingOverride = normalizeText(formData.get("seedingMode")) as 'random' | 'manual' | undefined;
 
 		if (!tournamentId) {
 			const tournaments = await db.tournaments.listTournaments(eventId);
@@ -397,15 +432,15 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 			);
 		}
 
-		const pairs = await db.pairs.listPairs(eventId);
-		if (pairs.length < 2) {
+		// Check entry mode
+		if (tournament.entryMode !== 'pair') {
 			const tournaments = await db.tournaments.listTournaments(eventId);
 			const sortedTournaments = [...tournaments].sort((a, b) => a.name.localeCompare(b.name, 'ja'));
 			return json<ActionData>(
 				{
 					type: "error",
 					source: "generate",
-					message: "ブラケットを生成するには、少なくとも2組のペアが必要です。",
+					message: "ブラケット生成はペア参加モードでのみ利用できます。",
 					tournaments: sortedTournaments,
 					tournamentsJson: JSON.stringify(sortedTournaments, null, 2),
 					tournamentId
@@ -414,7 +449,47 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 			);
 		}
 
-		const seedingMode = seedingOverride ?? tournament.seedingMode ?? 'random';
+		// Get participants (pairs only)
+		const participants = await db.tournamentParticipants.listParticipants(tournamentId);
+		const pairParticipants = participants.filter(p => p.participant_type === 'pair');
+		
+		if (pairParticipants.length < 2) {
+			const tournaments = await db.tournaments.listTournaments(eventId);
+			const sortedTournaments = [...tournaments].sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+			return json<ActionData>(
+				{
+					type: "error",
+					source: "generate",
+					message: "ブラケットを生成するには、少なくとも2組のペアが参加登録されている必要があります。",
+					tournaments: sortedTournaments,
+					tournamentsJson: JSON.stringify(sortedTournaments, null, 2),
+					tournamentId
+				},
+				{ status: 400 }
+			);
+		}
+
+		// Resolve PairRecord[] from participants
+		const pairIds = pairParticipants.map(p => p.pair_id).filter((id): id is string => id !== null);
+		const allPairs = await db.pairs.listPairs(eventId);
+		const pairs = pairIds.map(pairId => {
+			const pair = allPairs.find(p => p.id === pairId);
+			if (!pair) {
+				throw new Error(`ペアが見つかりません: ${pairId}`);
+			}
+			return pair;
+		});
+
+		// Use seed from participant if available, otherwise use pair seed
+		const pairsWithSeed = pairs.map(pair => {
+			const participant = pairParticipants.find(p => p.pair_id === pair.id);
+			return {
+				...pair,
+				seed: participant?.seed ?? pair.seed
+			};
+		});
+
+		const seedingMode = tournament.seedingMode ?? 'random';
 		if (tournament.format && tournament.format !== 'single-elimination') {
 			const tournaments = await db.tournaments.listTournaments(eventId);
 			const sortedTournaments = [...tournaments].sort((a, b) => a.name.localeCompare(b.name, 'ja'));
@@ -434,7 +509,7 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 		try {
 			await generateAndStoreSingleEliminationBracket({
 				tournamentId,
-				pairs,
+				pairs: pairsWithSeed,
 				seedingMode,
 				setMatches: (targetTournamentId, matches) =>
 					db.bracketMatches.setBracketMatches(targetTournamentId, matches)
@@ -494,7 +569,8 @@ function FlashMessage({ action }: { action: ActionData | undefined }) {
 }
 
 export default function TournamentsRoute() {
-	const { eventId, tournaments: initialTournaments, tournamentsJson: initialTournamentsJson } = useLoaderData<typeof loader>();
+	const loaderData = useLoaderData<typeof loader>();
+	const { eventId, tournaments: initialTournaments, tournamentsJson: initialTournamentsJson, participantCounts } = loaderData;
 	const actionData = useActionData<typeof action>();
 	const navigation = useNavigation();
 
@@ -613,6 +689,23 @@ export default function TournamentsRoute() {
 						</select>
 					</div>
 
+					<div>
+						<label htmlFor="entryMode" className="block text-sm font-medium text-slate-700 mb-2">
+							参加モード
+						</label>
+						<select
+							id="entryMode"
+							name="entryMode"
+							className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+						>
+							<option value="pair">ペア参加</option>
+							<option value="solo">個別参加</option>
+						</select>
+						<p className="mt-1 text-xs text-slate-500">
+							ペア参加: 既存のペアから選択して参加。個別参加: プレイヤーを個別に登録。
+						</p>
+					</div>
+
 					<div className="flex justify-end">
 						<button
 							type="submit"
@@ -682,6 +775,41 @@ export default function TournamentsRoute() {
 										</select>
 									</div>
 
+									<div>
+										<label className="block text-sm font-medium text-slate-700 mb-2">
+											参加モード
+										</label>
+										{(() => {
+											const participantCount = participantCounts[tournament.id] ?? 0;
+											const isDisabled = participantCount > 0;
+											return (
+												<>
+													<select
+														name="entryMode"
+														defaultValue={tournament.entryMode}
+														disabled={isDisabled}
+														className={`w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 ${
+															isDisabled ? 'bg-slate-100 cursor-not-allowed' : ''
+														}`}
+													>
+														<option value="pair">ペア参加</option>
+														<option value="solo">個別参加</option>
+													</select>
+													{isDisabled && (
+														<p className="mt-1 text-xs text-orange-600">
+															参加者が{participantCount}名登録されているため、参加モードを変更できません。先に参加者をすべて削除してください。
+														</p>
+													)}
+													{!isDisabled && (
+														<p className="mt-1 text-xs text-slate-500">
+															ペア参加: 既存のペアから選択。個別参加: プレイヤーを個別に登録。
+														</p>
+													)}
+												</>
+											);
+										})()}
+									</div>
+
 									<div className="text-xs text-slate-500">
 										作成日時: {new Date(tournament.createdAt).toLocaleString('ja-JP')}
 									</div>
@@ -699,31 +827,39 @@ export default function TournamentsRoute() {
 
 								<div className="mt-4 flex flex-wrap gap-2">
 									<Link
+										to={`/admin/events/${eventId}/tournaments/${tournament.id}/participants`}
+										className="inline-flex items-center rounded-lg border border-green-200 bg-green-50 px-3 py-1 text-xs font-medium text-green-700 transition hover:bg-green-100"
+									>
+										参加者管理
+									</Link>
+									<Link
 										to={`/admin/events/${eventId}/tournaments/${tournament.id}/bracket`}
 										className="inline-flex items-center rounded-lg border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700 transition hover:bg-blue-100"
 									>
 										ブラケットを見る
 									</Link>
 
-									<Form method="post" className="inline">
-										<input type="hidden" name="_intent" value="generate" />
-										<input type="hidden" name="tournamentId" value={tournament.id} />
-										<select
-											name="seedingMode"
-											defaultValue={tournament.seedingMode}
-											className="mr-2 rounded border border-slate-300 px-2 py-1 text-xs"
-										>
-											<option value="random">ランダムで生成</option>
-											<option value="manual">手動シードで生成</option>
-										</select>
-										<button
-											type="submit"
-											disabled={isSubmitting}
-											className="rounded-lg bg-green-600 px-3 py-1 text-xs font-medium text-white transition hover:bg-green-700 disabled:opacity-50"
-										>
-											{isSubmitting ? '生成中…' : 'ブラケット生成'}
-										</button>
-									</Form>
+									{(() => {
+										const isSoloMode = tournament.entryMode === 'solo';
+										return (
+											<Form method="post" className="inline">
+												<input type="hidden" name="_intent" value="generate" />
+												<input type="hidden" name="tournamentId" value={tournament.id} />
+												<button
+													type="submit"
+													disabled={isSubmitting || isSoloMode}
+													className={`rounded-lg px-3 py-1 text-xs font-medium text-white transition disabled:opacity-50 ${
+														isSoloMode
+															? 'bg-slate-400 cursor-not-allowed'
+															: 'bg-green-600 hover:bg-green-700'
+													}`}
+													title={isSoloMode ? 'ブラケット生成はペア参加モードでのみ利用できます' : undefined}
+												>
+													{isSubmitting ? '生成中…' : 'ブラケット生成'}
+												</button>
+											</Form>
+										);
+									})()}
 
 									<Form method="post" className="inline">
 										<input type="hidden" name="_intent" value="delete" />
