@@ -1,6 +1,6 @@
 # Boost Bracket TODO一覧
 
-最終更新: 2025-10-29 (Kai session - update 9)
+最終更新: 2025-01-27 (公開ペア登録とマニュアル実装計画追加)
 
 ## ✅ 完了済み
 - [x] SvelteKit プロジェクト初期化と Cloudflare アダプタ設定
@@ -293,6 +293,58 @@
   - 団体戦の勝ち抜き戦の追加と早稲田式との切り替え
   - 団体戦の自動チーム分け機能（メンバーをチームに分けてからペアの出る順番は登録できる）
   - 勝ち抜き戦でお互い大将まで行かなかった場合には、全員遊べるように味方同士で最後戦うように案内する
+
+### 優先度高：公開ペア登録とマニュアル実装
+- [ ] D1スキーマ追加（0002）
+  - [ ] `events`テーブルに公開受付設定カラム追加（`public_registration_enabled`, `public_registration_code`, `public_registration_deadline`）
+  - [ ] `player_credentials`テーブル作成（`username`, `password_hash`, `must_change_password`, `email`, `reset_token`等）
+  - [ ] `tournament_entries`テーブル作成（トーナメント参加申請、ステータス管理、相方同意フラグ）
+  - [ ] `team_applications`テーブル作成（チーム新規申請）
+  - [ ] `team_battle_entries`テーブル作成（団体戦参加申請）
+- [ ] 認証・セッション機能
+  - [ ] Cookieセッション実装（`__player_session`）
+  - [ ] PBKDF2-SHA256パスワードハッシュ実装（Workers対応）
+  - [ ] パスワードリセット機能（メールトークン生成・検証）
+- [ ] リポジトリ層実装
+  - [ ] `remix/app/repositories/auth.ts`（D1/Memory）: 認証関連（`createCredentials`, `verifyPassword`, `updatePassword`, `setResetToken`, `consumeResetToken`）
+  - [ ] `remix/app/repositories/tournament-entries.ts`: トーナメント参加申請（`createEntry`, `getEntry`, `confirmByPlayer`, `submitIfBothConfirmed`, `approve`, `reject`）
+  - [ ] `remix/app/repositories/team-applications.ts`: チーム新規申請（`create`, `approve`（承認時に`teams`作成）, `reject`）
+  - [ ] `remix/app/repositories/team-battle-entries.ts`: 団体戦参加申請（`create`, `approve`, `reject`）
+  - [ ] `database.server.ts`に各リポジトリのラップを追加（D1/Memory両対応）
+- [ ] 公開登録ルート実装
+  - [ ] `remix/app/routes/register._index.tsx`: 登録入口（イベント一覧＋「ペア登録」リンク）
+  - [ ] `remix/app/routes/view.$slug.register.tsx`: ペア登録フロー（パスコード→ログイン→ペア選択/作成→大会選択→申請）
+  - [ ] `remix/app/routes/view.$slug.team-register.tsx`: チーム新規申請＋団体戦への参加申請
+  - [ ] `remix/app/routes/manual.tsx`: マニュアル/FAQページ
+- [ ] 認証ルート実装
+  - [ ] `remix/app/routes/auth.login.tsx`: username+passwordログイン
+  - [ ] `remix/app/routes/auth.logout.tsx`: ログアウト
+  - [ ] `remix/app/routes/auth.change-password.tsx`: 初回変更用フォーム（`must_change_password`解消）
+  - [ ] `remix/app/routes/auth.reset.tsx`: メールによるパスワードリセット（任意設定後利用可能）
+- [ ] 管理者UI実装
+  - [ ] `remix/app/routes/admin.events.$eventId.settings.tsx`: 公開受付設定（ON/OFF・パスコード・締切・上限）
+  - [ ] `remix/app/routes/admin.events.$eventId.entries.players.credentials.tsx`: プレイヤーに対する`username`/初期PWの発行・再発行・メール設定（配布用表示）
+  - [ ] `remix/app/routes/admin.events.$eventId.tournaments.$tournamentId.entries.tsx`: トーナメント参加申請の承認/却下
+  - [ ] `remix/app/routes/admin.events.$eventId.teams.applications.tsx`: チーム新規申請の承認/却下
+  - [ ] `remix/app/routes/admin.events.$eventId.team-battles.$battleId.entries.tsx`: 団体戦参加申請の承認/却下
+- [ ] 本番環境のみBasic認証
+  - [ ] `remix/app/entry.server.tsx`に`/admin`パスでのBasic認証を注入（Previewでは無効、Productionのみ）
+  - [ ] `BASIC_AUTH_USER`/`BASIC_AUTH_PASS`が設定されている時のみ有効化
+- [ ] 相方同意の原子的遷移実装
+  - [ ] `tournament_entries`の`confirmByPlayer`でトランザクションを使用して同時書き込みを防止
+  - [ ] 両者が同意完了した時点で`status`を`awaiting_partner`→`submitted`へ自動遷移
+  - [ ] SQL `BEGIN IMMEDIATE`/`COMMIT`での原子的更新を実装
+- [ ] 公開側導線追加
+  - [ ] `events._index.tsx`に各イベントカードに「公開ページ」「ペア登録」リンクを追加（受付ON時のみ表示）
+  - [ ] `register._index.tsx`でイベント一覧とスラッグ導線を提供
+- [ ] テスト実装
+  - [ ] 認証リポジトリの単体テスト（ハッシュ検証、リセットトークン生成・検証）
+  - [ ] エントリリポジトリの単体テスト（相方同意の原子的遷移、承認API）
+  - [ ] ルートアクションテスト（`view.$slug.register`の成功/権限制御/締切/コード誤りケース）
+  - [ ] 管理承認画面のテスト
+- [ ] ドキュメント更新
+  - [ ] `docs/TODO.md`に新セクションを追記（公開登録・団体戦申請・マニュアル）
+  - [ ] `docs/deployment.md`にBasic認証（本番のみ）とメール送信（任意）の設定手順を追記
 
 ---
 
