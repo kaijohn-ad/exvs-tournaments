@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
 	Form,
-	Link,
 	useActionData,
 	useLoaderData,
 	useNavigate,
@@ -287,17 +286,9 @@ export default function AdminIndex() {
 			</section>
 
 			<section className="rounded-2xl border border-slate-200 bg-white p-8 shadow-lg">
-				<div className="flex items-center justify-between">
-					<h2 className="text-xl font-semibold text-slate-900">
-						登録済みイベント
-					</h2>
-					<Link
-						to="/"
-						className="text-sm font-medium text-blue-600 transition hover:text-blue-500"
-					>
-						トップへ戻る
-					</Link>
-				</div>
+				<h2 className="text-xl font-semibold text-slate-900">
+					登録済みイベント
+				</h2>
 				{events.length === 0 ? (
 					<p className="mt-6 text-sm text-slate-500">
 						まだイベントが登録されていません。
