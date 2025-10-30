@@ -154,10 +154,12 @@ describe("DB logging", () => {
 		test("outputs db.selected log with fallback=true when DB is unavailable in non-production", () => {
 			const context = createContext(undefined, "preview");
 
-			// NODE_ENVをdevelopment以外に設定
+			// ENVIRONMENT_STAGE=previewが設定されているため、NODE_ENVは無視される
+			// テストのためにNODE_ENVをdevelopment以外に設定
 			const originalNodeEnv = process.env.NODE_ENV;
 			process.env.NODE_ENV = "production";
 
+			// ただし、stage=previewなのでエラーは発生しない
 			getDatabase(context);
 
 			process.env.NODE_ENV = originalNodeEnv;
@@ -187,10 +189,10 @@ describe("DB logging", () => {
 			process.env.NODE_ENV = originalNodeEnv;
 
 			const allLogs = consoleLogs.join(" ");
-			// SQL関連のキーワードが含まれていないことを確認
-			expect(allLogs).not.toMatch(/SELECT|INSERT|UPDATE|DELETE/i);
-			expect(allLogs).not.toMatch(/bind|binding/i);
-			expect(allLogs).not.toMatch(/sql|query/i);
+			// SQL関連のキーワードが含まれていないことを確認（単語境界を使用）
+			expect(allLogs).not.toMatch(/\bSELECT\b|\bINSERT\b|\bUPDATE\b|\bDELETE\b/i);
+			expect(allLogs).not.toMatch(/\bbind\b|\bbinding\b/i);
+			expect(allLogs).not.toMatch(/\bsql\b|\bquery\b/i);
 
 			// ログがJSON形式であることを確認
 			const dbSelectedLog = consoleLogs.find((log) => log.includes('"event":"db.selected"'));

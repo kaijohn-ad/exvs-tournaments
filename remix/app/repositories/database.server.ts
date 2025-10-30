@@ -529,7 +529,7 @@ export function getDatabase(context: AppLoadContext, options: DatabaseOptions = 
 	}
 
 	if (!db || typeof db.prepare !== "function") {
-		const fallback = process.env.NODE_ENV !== 'production';
+		const fallback = stage !== 'production';
 		
 		logDb("db.selected", stage, {
 			driver: "memory",
@@ -547,7 +547,7 @@ export function getDatabase(context: AppLoadContext, options: DatabaseOptions = 
 		});
 		
 		// 本番環境ではメモリストアへのフォールバックを避ける
-		if (process.env.NODE_ENV === 'production') {
+		if (stage === 'production') {
 			throw new Error("D1 database is not available in production environment");
 		}
 		
