@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - master
-      - feature/remix-workers-migration
+      - develop
   workflow_dispatch:
     inputs:
       environment:
@@ -54,3 +54,4 @@ jobs:
         workingDirectory: ./remix
         directory: build/client
         gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+        branch: ${{ github.ref_name }}
