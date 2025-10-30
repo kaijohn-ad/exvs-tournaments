@@ -245,9 +245,14 @@
   - [ ] Productionブランチ設定確認（`feature/remix-workers-migration` → 移行完了後 `master`）
   - [ ] Previewブランチ設定確認（上記以外の全ブランチ）
   - [ ] 環境変数の環境別設定確認
-- [ ] 環境別データベース設定の実装
+- [x] 環境別データベース設定の実装
   - [x] Cloudflare Pages の環境（Preview/Production）による自動DB選択（`wrangler.toml` で設定済み）
-  - [ ] データベース接続の環境別ログ出力
+  - [x] データベース接続の環境別ログ出力
+    - [x] `ENVIRONMENT_STAGE` 環境変数の設定（`wrangler.json`/`wrangler.toml`）
+    - [x] `runtime.server.ts` に環境ステージ判定機能を実装
+    - [x] `logger.server.ts` にDB接続ログ出力機能を実装
+    - [x] `load-context.ts` と `database.server.ts` にログ出力を統合
+    - [x] ログ出力のテストケース作成（`db-logging.test.ts`）
 - [ ] テスト環境の整備
   - [x] Preview環境（`exvs-tournaments-dev`）がテスト環境として利用可能
   - [ ] CI/CDでのPreview環境利用

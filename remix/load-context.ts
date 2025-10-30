@@ -1,4 +1,6 @@
 import { type PlatformProxy } from "wrangler";
+import { getStage } from "./app/utils/runtime.server";
+import { logDb } from "./app/utils/logger.server";
 
 export type CloudflareContext = Omit<PlatformProxy<Env>, "dispose" | "caches" | "cf"> & {
 	caches: PlatformProxy<Env>["caches"] | CacheStorage;
@@ -30,14 +32,19 @@ export function getLoadContext({ context }: GetLoadContextArgs): RemixAppLoadCon
 	// 開発環境ではメモリストアを使用
 	const useMemoryStore = process.env.USE_MEMORY_STORE === 'true' || !cloudflare.env.DB;
 
-	// 本番環境でのデータベース接続をログ出力
-	if (process.env.NODE_ENV === 'production') {
-		console.log("[load-context] Production environment detected", {
-			hasDB: !!cloudflare.env.DB,
-			useMemoryStore,
-			envKeys: cloudflare.env ? Object.keys(cloudflare.env) : "undefined"
-		});
-	}
+	// 一時的なコンテキストを作成してステージを取得
+	const tempContext: RemixAppLoadContext = {
+		cloudflare,
+		db: cloudflare.env.DB,
+	};
+	const stage = getStage(tempContext);
+	const hasDB = !!cloudflare.env.DB;
+
+	// db.env ログを出力
+	logDb("db.env", stage, {
+		hasDB,
+		useMemory: useMemoryStore,
+	});
 
 	return {
 		cloudflare: {
