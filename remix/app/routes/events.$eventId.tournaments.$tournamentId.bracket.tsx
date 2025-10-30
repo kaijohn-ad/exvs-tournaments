@@ -31,7 +31,7 @@ export async function loader({ params, context }: LoaderFunctionArgs) {
 
 	let tournament: TournamentRecord;
 	try {
-		tournament = await db.tournaments.ensureTournament(eventId, tournamentId);
+		tournament = await db.tournaments.ensureTournament(tournamentId);
 	} catch (error) {
 		console.error("[public-tournament-bracket:load] tournament not found", {
 			eventId,

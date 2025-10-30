@@ -1,3 +1,4 @@
+import { generateUUID } from "~/utils/uuid";
 import type { MatchData, MatchImportData, MatchRecord } from './matches';
 
 export const createMatchesRepositoryD1 = (db: D1Database) => {
@@ -30,7 +31,7 @@ export const createMatchesRepositoryD1 = (db: D1Database) => {
 	},
 
 	async createMatch(data: MatchData): Promise<MatchRecord> {
-		const id = crypto.randomUUID();
+		const id = generateUUID();
 		const now = new Date().toISOString();
 		const status = data.status ?? 'completed';
 		const played_at = data.played_at ?? now;
@@ -176,7 +177,7 @@ export const createMatchesRepositoryD1 = (db: D1Database) => {
 					continue;
 				}
 
-			const id = match.id ?? crypto.randomUUID();
+			const id = match.id ?? generateUUID();
 			const status = match.status ?? 'completed';
 			const played_at = match.played_at ?? now;
 			const slot_index = match.slot_index ?? null;

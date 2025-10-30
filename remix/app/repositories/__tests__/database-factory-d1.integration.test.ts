@@ -2,6 +2,27 @@ import { describe, expect, test, beforeEach, afterEach } from "vitest";
 import { setupTestDatabase, cleanupTestDatabase, getTestDatabaseContext } from "./d1-test-helper";
 import { getDatabase } from "../database.server";
 import type { AppLoadContext } from "@remix-run/cloudflare";
+import type { CloudflareContext } from "../../../load-context";
+
+const createAppContext = (db?: D1Database): AppLoadContext => {
+	const cloudflare: CloudflareContext = {
+		env: {
+			DB: (db ?? (undefined as unknown as D1Database)),
+		} as Env,
+		ctx: {
+			waitUntil: () => {},
+			passThroughOnException: () => {},
+			props: {},
+		},
+		caches: (globalThis as unknown as { caches?: CacheStorage }).caches || ({} as CacheStorage),
+		cf: {} as Request["cf"],
+	};
+
+	return {
+		cloudflare,
+		db,
+	} as AppLoadContext;
+};
 
 describe("Database Factory D1 Integration Tests", () => {
 	let testDb: D1Database;
@@ -38,14 +59,7 @@ describe("Database Factory D1 Integration Tests", () => {
 
 	test("should fallback to memory database when D1 binding is unavailable", async () => {
 		// D1バインディングなしのコンテキストを作成
-		const contextWithoutD1: AppLoadContext = {
-			cloudflare: {
-				env: {
-					// DBバインディングなし
-				},
-			},
-			// dbプロパティなし
-		};
+	const contextWithoutD1 = createAppContext();
 
 		const database = getDatabase(contextWithoutD1);
 
@@ -260,6 +274,8 @@ describe("Database Factory D1 Integration Tests", () => {
 
 	test("should handle error cases gracefully", async () => {
 		const database = getDatabase(testContext);
+    // 明示的にイベントを作成してスコープ内で参照できるようにする
+    const localEvent = await database.events.createEvent({ name: "Err Case Event", slug: "err-case-event" });
 
 		// 存在しないイベントIDでプレイヤーを作成しようとする
 		await expect(
@@ -267,8 +283,8 @@ describe("Database Factory D1 Integration Tests", () => {
 		).rejects.toThrow();
 
 		// 存在しないプレイヤーIDでペアを作成しようとする
-		await expect(
-			database.pairs.createPair(event.id, {
+    await expect(
+        database.pairs.createPair(localEvent.id, {
 				player1_id: "non-existent-player-1",
 				player2_id: "non-existent-player-2"
 			})

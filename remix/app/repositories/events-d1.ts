@@ -1,3 +1,4 @@
+import { generateUUID } from "~/utils/uuid";
 import type { EventData, EventRecord } from './events';
 
 export const createEventsRepositoryD1 = (db: D1Database) => {
@@ -23,7 +24,7 @@ export const createEventsRepositoryD1 = (db: D1Database) => {
 				result.results?.map((row) => ({
 					id: row.id,
 					name: row.name,
-					slug: row.slug ?? undefined,
+					slug: row.slug ?? null,
 					createdAt: row.created_at
 				})) ?? []
 			);
@@ -47,7 +48,7 @@ export const createEventsRepositoryD1 = (db: D1Database) => {
 			return {
 				id: result.id,
 				name: result.name,
-				slug: result.slug ?? undefined,
+				slug: result.slug ?? null,
 				createdAt: result.created_at
 			};
 		},
@@ -58,9 +59,9 @@ export const createEventsRepositoryD1 = (db: D1Database) => {
 				throw new Error('Event name is required');
 			}
 
-			const desiredSlug = slugify(data.slug ?? name);
+			const desiredSlug = data.slug ? slugify(data.slug) : '';
 			const preferredId = normalizeText(data.id) || desiredSlug;
-			const id = preferredId || crypto.randomUUID();
+			const id = preferredId || generateUUID();
 
 			const existing = await db.prepare('SELECT id FROM events WHERE id = ?').bind(id).first();
 			if (existing) {
@@ -82,13 +83,13 @@ export const createEventsRepositoryD1 = (db: D1Database) => {
 
 			await db
 				.prepare('INSERT INTO events (id, name, slug, created_at) VALUES (?, ?, ?, ?)')
-				.bind(id, name, desiredSlug || null, createdAt)
+				.bind(id, name, desiredSlug ? desiredSlug : null, createdAt)
 				.run();
 
 			return {
 				id,
 				name,
-				slug: desiredSlug || undefined,
+				slug: desiredSlug ? desiredSlug : null,
 				createdAt
 			};
 		},
@@ -100,7 +101,7 @@ export const createEventsRepositoryD1 = (db: D1Database) => {
 				throw new Error('Event name is required');
 			}
 
-			const desiredSlug = slugify(data.slug ?? existing.slug ?? name);
+			const desiredSlug = data.slug ? slugify(data.slug) : (existing.slug ?? null);
 
 			if (desiredSlug) {
 				const slugConflict = await db
@@ -114,13 +115,13 @@ export const createEventsRepositoryD1 = (db: D1Database) => {
 
 			await db
 				.prepare('UPDATE events SET name = ?, slug = ? WHERE id = ?')
-				.bind(name, desiredSlug || null, existing.id)
+				.bind(name, desiredSlug ? desiredSlug : null, existing.id)
 				.run();
 
 			return {
 				id: existing.id,
 				name,
-				slug: desiredSlug || undefined,
+				slug: desiredSlug ?? null,
 				createdAt: existing.createdAt
 			};
 		},

@@ -5,11 +5,13 @@ import {
 } from '../bracket-generator';
 import type { PairRecord } from '../pairs';
 
-const createPair = (id: string, seed?: number): PairRecord => ({
+const createPair = (id: string, seed?: number | null): PairRecord => ({
 	id,
+	event_id: 'event-1',
 	player1_id: `${id}-p1`,
 	player2_id: `${id}-p2`,
-	seed
+	seed: seed ?? null,
+	created_at: new Date().toISOString()
 });
 
 describe('generateSingleEliminationBracketMatches', () => {

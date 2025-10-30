@@ -221,7 +221,12 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 					);
 				}
 
-				const pair = await db.pairs.updatePair(eventId, pairId, {
+				const existing = await db.pairs.ensurePair(pairId);
+				if (existing.event_id !== eventId) {
+					throw new Response('Pair not found', { status: 404 });
+				}
+
+				const pair = await db.pairs.updatePair(pairId, {
 					player1_id: player1,
 					player2_id: player2,
 					seed,
@@ -252,7 +257,12 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 					);
 				}
 
-				await db.pairs.deletePair(eventId, pairId);
+				const existing = await db.pairs.ensurePair(pairId);
+				if (existing.event_id !== eventId) {
+					throw new Response('Pair not found', { status: 404 });
+				}
+
+				await db.pairs.deletePair(pairId);
 				const { pairs, pairsJson } = await fetchPairs(context, eventId);
 
 				return json<ActionSuccess>({

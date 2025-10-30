@@ -124,10 +124,11 @@ describe("PlayerStats D1 Integration Tests", () => {
 
 		const createdStats = await database.playerStats.createPlayerStats(statsData);
 		
-		const updateData = {
-			wins: 4,
-			losses: 2
-		};
+	const updateData = {
+		...statsData,
+		wins: 4,
+		losses: 2
+	};
 
 		const updatedStats = await database.playerStats.updatePlayerStats(createdStats.id, updateData);
 		

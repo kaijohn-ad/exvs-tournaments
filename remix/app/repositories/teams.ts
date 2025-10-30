@@ -1,3 +1,5 @@
+import { generateUUID } from "~/utils/uuid";
+
 export interface TeamData {
 	name: string;
 }
@@ -29,7 +31,7 @@ export const listTeams = (eventId: string): TeamRecord[] => {
 
 export const createTeam = (eventId: string, data: TeamData): TeamRecord => {
 	const record: TeamRecord = {
-		id: crypto.randomUUID(),
+		id: generateUUID(),
 		name: data.name.trim()
 	};
 
@@ -80,7 +82,7 @@ export const setTeams = (eventId: string, teams: TeamImportData[]): TeamRecord[]
 		}
 
 		const record: TeamRecord = {
-			id: entry.id?.trim() || crypto.randomUUID(),
+			id: entry.id?.trim() || generateUUID(),
 			name
 		};
 
@@ -92,4 +94,8 @@ export const setTeams = (eventId: string, teams: TeamImportData[]): TeamRecord[]
 
 export const __resetForTests = () => {
 	store.clear();
+};
+
+export const addTeamMember = (_teamId: string, _playerId: string): void => {
+	// Memory store does not track team members; this is a no-op for parity with D1 implementation.
 };

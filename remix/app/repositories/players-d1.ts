@@ -1,38 +1,48 @@
+import { generateUUID } from "~/utils/uuid";
 import type { PlayerData, PlayerImportData, PlayerRecord } from './players';
 
 export const createPlayersRepositoryD1 = (db: D1Database) => {
 	return {
 		async listPlayers(eventId: string): Promise<PlayerRecord[]> {
 			const result = await db
-				.prepare('SELECT id, name, note FROM players WHERE event_id = ? ORDER BY name COLLATE NOCASE')
+				.prepare('SELECT id, event_id, name, note, created_at FROM players WHERE event_id = ? ORDER BY name COLLATE NOCASE')
 				.bind(eventId)
-				.all<PlayerRecord>();
+				.all<any>();
 
-			return result.results || [];
+			return (result.results || []).map((row) => ({
+				id: row.id,
+				event_id: row.event_id,
+				name: row.name,
+				note: row.note ?? null,
+				created_at: row.created_at
+			}));
 		},
 
 		async createPlayer(eventId: string, data: PlayerData): Promise<PlayerRecord> {
-			const id = crypto.randomUUID();
+			const id = generateUUID();
 			const name = data.name.trim();
-			const note = data.note?.trim() || null;
+			const note = data.note?.trim() ?? null;
+			const createdAt = new Date().toISOString();
 
 			await db
-				.prepare('INSERT INTO players (id, event_id, name, note) VALUES (?, ?, ?, ?)')
-				.bind(id, eventId, name, note)
+				.prepare('INSERT INTO players (id, event_id, name, note, created_at) VALUES (?, ?, ?, ?, ?)')
+				.bind(id, eventId, name, note, createdAt)
 				.run();
 
 			return {
 				id,
+				event_id: eventId,
 				name,
-				note: note || undefined
+				note: note,
+				created_at: createdAt
 			};
 		},
 
-		async ensurePlayer(eventId: string, playerId: string): Promise<PlayerRecord> {
+		async ensurePlayer(playerId: string): Promise<PlayerRecord> {
 			const result = await db
-				.prepare('SELECT id, name, note FROM players WHERE id = ? AND event_id = ?')
-				.bind(playerId, eventId)
-				.first<PlayerRecord>();
+				.prepare('SELECT id, event_id, name, note, created_at FROM players WHERE id = ?')
+				.bind(playerId)
+				.first<any>();
 
 			if (!result) {
 				throw new Error('Player not found');
@@ -40,33 +50,37 @@ export const createPlayersRepositoryD1 = (db: D1Database) => {
 
 			return {
 				id: result.id,
+				event_id: result.event_id,
 				name: result.name,
-				note: result.note || undefined
+				note: result.note ?? null,
+				created_at: result.created_at
 			};
 		},
 
-		async updatePlayer(eventId: string, playerId: string, data: PlayerData): Promise<PlayerRecord> {
-			await this.ensurePlayer(eventId, playerId);
+		async updatePlayer(playerId: string, data: PlayerData): Promise<PlayerRecord> {
+			const ensured = await this.ensurePlayer(playerId);
 
 			const name = data.name.trim();
-			const note = data.note?.trim() || null;
+			const note = data.note?.trim() ?? null;
 
 			await db
-				.prepare('UPDATE players SET name = ?, note = ? WHERE id = ? AND event_id = ?')
-				.bind(name, note, playerId, eventId)
+				.prepare('UPDATE players SET name = ?, note = ? WHERE id = ?')
+				.bind(name, note, playerId)
 				.run();
 
 			return {
 				id: playerId,
+				event_id: ensured.event_id,
 				name,
-				note: note || undefined
+				note: note,
+				created_at: ensured.created_at
 			};
 		},
 
-		async deletePlayer(eventId: string, playerId: string): Promise<void> {
+		async deletePlayer(playerId: string): Promise<void> {
 			const result = await db
-				.prepare('DELETE FROM players WHERE id = ? AND event_id = ?')
-				.bind(playerId, eventId)
+				.prepare('DELETE FROM players WHERE id = ?')
+				.bind(playerId)
 				.run();
 
 			if (result.meta.changes === 0) {
@@ -84,18 +98,21 @@ export const createPlayersRepositoryD1 = (db: D1Database) => {
 					continue;
 				}
 
-				const id = entry.id?.trim() || crypto.randomUUID();
+				const id = entry.id?.trim() || generateUUID();
 				const note = entry.note?.trim() || null;
+			const createdAt = new Date().toISOString();
 
 				await db
-					.prepare('INSERT INTO players (id, event_id, name, note) VALUES (?, ?, ?, ?)')
-					.bind(id, eventId, name, note)
+				.prepare('INSERT INTO players (id, event_id, name, note, created_at) VALUES (?, ?, ?, ?, ?)')
+				.bind(id, eventId, name, note, createdAt)
 					.run();
 
 				records.push({
 					id,
 					name,
-					note: note || undefined
+					note: note,
+				event_id: eventId,
+				created_at: createdAt
 				});
 			}
 

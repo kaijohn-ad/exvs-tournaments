@@ -1,3 +1,4 @@
+import { generateUUID } from "~/utils/uuid";
 import type { PlayerStatsData, PlayerStatsImportData, PlayerStatsRecord } from './player-stats';
 
 export const createPlayerStatsRepositoryD1 = (db: D1Database) => {
@@ -34,7 +35,7 @@ export const createPlayerStatsRepositoryD1 = (db: D1Database) => {
 		},
 
 		async createPlayerStats(data: PlayerStatsData): Promise<PlayerStatsRecord> {
-			const id = crypto.randomUUID();
+			const id = generateUUID();
 			const now = new Date().toISOString();
 			const wins = data.wins ?? 0;
 			const losses = data.losses ?? 0;
@@ -59,7 +60,7 @@ export const createPlayerStatsRepositoryD1 = (db: D1Database) => {
 			return {
 				id,
 				scope: data.scope,
-				scope_id: data.scope_id,
+				scope_id: data.scope_id ?? null,
 				player_id: data.player_id,
 				wins,
 				losses,
@@ -107,7 +108,7 @@ export const createPlayerStatsRepositoryD1 = (db: D1Database) => {
 			return {
 				id: statsId,
 				scope: data.scope,
-				scope_id: data.scope_id,
+				scope_id: data.scope_id ?? null,
 				player_id: data.player_id,
 				wins,
 				losses,
@@ -167,7 +168,7 @@ export const createPlayerStatsRepositoryD1 = (db: D1Database) => {
 					continue;
 				}
 
-				const id = stat.id ?? crypto.randomUUID();
+				const id = stat.id ?? generateUUID();
 				const wins = stat.wins ?? 0;
 				const losses = stat.losses ?? 0;
 
@@ -191,7 +192,7 @@ export const createPlayerStatsRepositoryD1 = (db: D1Database) => {
 				results.push({
 					id,
 					scope: stat.scope,
-					scope_id: stat.scope_id,
+					scope_id: stat.scope_id ?? null,
 					player_id: stat.player_id,
 					wins,
 					losses,

@@ -1,3 +1,5 @@
+import { generateUUID } from "~/utils/uuid";
+
 export interface TeamBattleSlotData {
 	team_battle_id: string;
 	team_id: string;
@@ -51,7 +53,7 @@ export const listTeamBattleSlotsByTeam = (
 
 export const createTeamBattleSlot = (data: TeamBattleSlotData): TeamBattleSlotRecord => {
 	const battleStore = getBattleStore(data.team_battle_id);
-	const id = crypto.randomUUID();
+	const id = generateUUID();
 
 	const record: TeamBattleSlotRecord = {
 		id,
@@ -132,7 +134,7 @@ export const setTeamBattleSlots = (
 			continue;
 		}
 
-		const id = slot.id ?? crypto.randomUUID();
+		const id = slot.id ?? generateUUID();
 		const record: TeamBattleSlotRecord = {
 			id,
 			team_battle_id: battleId,

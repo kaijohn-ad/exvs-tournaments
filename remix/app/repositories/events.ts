@@ -7,7 +7,7 @@ export interface EventData {
 export interface EventRecord {
 	id: string;
 	name: string;
-	slug?: string;
+	slug: string | null;
 	createdAt: string;
 }
 
@@ -62,7 +62,7 @@ export const createEvent = (data: EventData): EventRecord => {
 	const record: EventRecord = {
 		id,
 		name,
-		slug: desiredSlug || undefined,
+		slug: desiredSlug || null,
 		createdAt: new Date().toISOString()
 	};
 
@@ -97,7 +97,7 @@ export const updateEvent = (eventId: string, data: EventData): EventRecord => {
 	const updated: EventRecord = {
 		...existing,
 		name,
-		slug: desiredSlug || undefined
+		slug: desiredSlug || null
 	};
 
 	store.set(existing.id, updated);

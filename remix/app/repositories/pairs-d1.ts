@@ -1,40 +1,51 @@
+import { generateUUID } from "~/utils/uuid";
 import type { PairData, PairImportData, PairRecord } from './pairs';
 
 export const createPairsRepositoryD1 = (db: D1Database) => {
 	return {
 		async listPairs(eventId: string): Promise<PairRecord[]> {
 			const result = await db
-				.prepare('SELECT id, player1_id, player2_id, seed FROM pairs WHERE event_id = ? ORDER BY seed ASC, id ASC')
+				.prepare('SELECT id, event_id, player1_id, player2_id, seed, created_at FROM pairs WHERE event_id = ? ORDER BY seed ASC, id ASC')
 				.bind(eventId)
-				.all<PairRecord>();
+				.all<any>();
 
-			return result.results || [];
+			return (result.results || []).map((row) => ({
+				id: row.id,
+				event_id: row.event_id,
+				player1_id: row.player1_id,
+				player2_id: row.player2_id,
+				seed: row.seed ?? null,
+				created_at: row.created_at
+			}));
 		},
 
 		async createPair(eventId: string, data: PairData): Promise<PairRecord> {
-			const id = crypto.randomUUID();
+			const id = generateUUID();
 			const player1_id = data.player1_id.trim();
 			const player2_id = data.player2_id.trim();
-			const seed = data.seed || null;
+			const seed = data.seed ?? null;
+			const createdAt = new Date().toISOString();
 
 			await db
-				.prepare('INSERT INTO pairs (id, event_id, player1_id, player2_id, seed) VALUES (?, ?, ?, ?, ?)')
-				.bind(id, eventId, player1_id, player2_id, seed)
+				.prepare('INSERT INTO pairs (id, event_id, player1_id, player2_id, seed, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+				.bind(id, eventId, player1_id, player2_id, seed, createdAt)
 				.run();
 
 			return {
 				id,
+				event_id: eventId,
 				player1_id,
 				player2_id,
-				seed: seed || undefined
+				seed,
+				created_at: createdAt
 			};
 		},
 
-		async ensurePair(eventId: string, pairId: string): Promise<PairRecord> {
+	async ensurePair(pairId: string): Promise<PairRecord> {
 			const result = await db
-				.prepare('SELECT id, player1_id, player2_id, seed FROM pairs WHERE id = ? AND event_id = ?')
-				.bind(pairId, eventId)
-				.first<PairRecord>();
+				.prepare('SELECT id, event_id, player1_id, player2_id, seed, created_at FROM pairs WHERE id = ?')
+				.bind(pairId)
+				.first<any>();
 
 			if (!result) {
 				throw new Error('Pair not found');
@@ -42,36 +53,40 @@ export const createPairsRepositoryD1 = (db: D1Database) => {
 
 			return {
 				id: result.id,
+				event_id: result.event_id,
 				player1_id: result.player1_id,
 				player2_id: result.player2_id,
-				seed: result.seed || undefined
+				seed: result.seed ?? null,
+				created_at: result.created_at
 			};
 		},
 
-		async updatePair(eventId: string, pairId: string, data: PairData): Promise<PairRecord> {
-			await this.ensurePair(eventId, pairId);
+	async updatePair(pairId: string, data: PairData): Promise<PairRecord> {
+		const ensured = await this.ensurePair(pairId);
 
 			const player1_id = data.player1_id.trim();
 			const player2_id = data.player2_id.trim();
-			const seed = data.seed || null;
+			const seed = data.seed ?? null;
 
 			await db
-				.prepare('UPDATE pairs SET player1_id = ?, player2_id = ?, seed = ? WHERE id = ? AND event_id = ?')
-				.bind(player1_id, player2_id, seed, pairId, eventId)
+				.prepare('UPDATE pairs SET player1_id = ?, player2_id = ?, seed = ? WHERE id = ?')
+				.bind(player1_id, player2_id, seed, pairId)
 				.run();
 
 			return {
 				id: pairId,
+				event_id: ensured.event_id,
 				player1_id,
 				player2_id,
-				seed: seed || undefined
+				seed,
+				created_at: ensured.created_at
 			};
 		},
 
-		async deletePair(eventId: string, pairId: string): Promise<void> {
+	async deletePair(pairId: string): Promise<void> {
 			const result = await db
-				.prepare('DELETE FROM pairs WHERE id = ? AND event_id = ?')
-				.bind(pairId, eventId)
+				.prepare('DELETE FROM pairs WHERE id = ?')
+				.bind(pairId)
 				.run();
 
 			if (result.meta.changes === 0) {
@@ -91,19 +106,22 @@ export const createPairsRepositoryD1 = (db: D1Database) => {
 					continue;
 				}
 
-				const id = entry.id?.trim() || crypto.randomUUID();
-				const seed = entry.seed || null;
+			const id = entry.id?.trim() || generateUUID();
+			const seed = entry.seed ?? null;
+			const createdAt = new Date().toISOString();
 
-				await db
-					.prepare('INSERT INTO pairs (id, event_id, player1_id, player2_id, seed) VALUES (?, ?, ?, ?, ?)')
-					.bind(id, eventId, player1_id, player2_id, seed)
-					.run();
+			await db
+				.prepare('INSERT INTO pairs (id, event_id, player1_id, player2_id, seed, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+				.bind(id, eventId, player1_id, player2_id, seed, createdAt)
+				.run();
 
 				records.push({
 					id,
 					player1_id,
 					player2_id,
-					seed: seed || undefined
+				seed,
+				event_id: eventId,
+				created_at: createdAt
 				});
 			}
 

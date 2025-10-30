@@ -1,11 +1,11 @@
 import { type PlatformProxy } from "wrangler";
 
-type CloudflareContext = Omit<PlatformProxy<Env>, "dispose" | "caches" | "cf"> & {
+export type CloudflareContext = Omit<PlatformProxy<Env>, "dispose" | "caches" | "cf"> & {
 	caches: PlatformProxy<Env>["caches"] | CacheStorage;
 	cf: Request["cf"];
 };
 
-type RemixAppLoadContext = {
+export type RemixAppLoadContext = {
 	cloudflare: CloudflareContext;
 	db: D1Database;
 };

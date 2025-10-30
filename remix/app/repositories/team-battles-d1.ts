@@ -1,3 +1,4 @@
+import { generateUUID } from "~/utils/uuid";
 import type { TeamBattleData, TeamBattleImportData, TeamBattleRecord } from './team-battles';
 
 export const createTeamBattlesRepositoryD1 = (db: D1Database) => {
@@ -19,7 +20,7 @@ export const createTeamBattlesRepositoryD1 = (db: D1Database) => {
 		},
 
 		async createTeamBattle(eventId: string, data: TeamBattleData): Promise<TeamBattleRecord> {
-			const id = crypto.randomUUID();
+			const id = generateUUID();
 			const slots_count = data.slots_count ?? 3;
 			const format = data.format ?? 'waseda';
 			const allow_double_appearance_per_team = data.allow_double_appearance_per_team ?? true;
@@ -151,7 +152,7 @@ export const createTeamBattlesRepositoryD1 = (db: D1Database) => {
 					continue;
 				}
 
-				const id = battle.id ?? crypto.randomUUID();
+				const id = battle.id ?? generateUUID();
 				const slots_count = battle.slots_count ?? 3;
 				const format = battle.format ?? 'waseda';
 				const allow_double_appearance_per_team =

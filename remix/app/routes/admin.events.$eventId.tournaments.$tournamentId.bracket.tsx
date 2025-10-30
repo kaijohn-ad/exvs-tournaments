@@ -54,7 +54,11 @@ export async function loader({ params, context }: LoaderFunctionArgs) {
 
 	let tournament: TournamentRecord;
 	try {
-		tournament = await db.tournaments.ensureTournament(eventId, tournamentId);
+		const existing = await db.tournaments.ensureTournament(tournamentId);
+		if (existing.eventId !== eventId) {
+			throw new Response('Tournament not found', { status: 404 });
+		}
+		tournament = existing;
 	} catch (error) {
 		console.error("[tournament-bracket:load] tournament not found", {
 			eventId,
@@ -225,8 +229,8 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 		let pairB: PairRecord;
 
 		try {
-			pairA = await db.pairs.ensurePair(eventId, match.participant_a_pair_id);
-			pairB = await db.pairs.ensurePair(eventId, match.participant_b_pair_id);
+		pairA = await db.pairs.ensurePair(match.participant_a_pair_id);
+		pairB = await db.pairs.ensurePair(match.participant_b_pair_id);
 		} catch (error) {
 			console.error("[tournament-bracket:record] pair lookup failed", {
 				eventId,

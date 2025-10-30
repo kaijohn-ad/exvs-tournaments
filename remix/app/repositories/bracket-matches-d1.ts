@@ -1,3 +1,4 @@
+import { generateUUID } from "~/utils/uuid";
 import type {
 	BracketMatchImportData,
 	BracketMatchRecord,
@@ -51,6 +52,56 @@ const mapRowToRecord = (row: any): BracketMatchRecord => ({
 
 export const createBracketMatchesRepositoryD1 = (db: D1Database) => {
 	return {
+        async createBracketMatch(
+            tournamentId: string,
+            data: Omit<BracketMatchRecord, 'id' | 'tournament_id' | 'created_at'>
+        ): Promise<BracketMatchRecord> {
+            const id = generateUUID();
+            const createdAt = new Date().toISOString();
+            const round = sanitizeRound((data as any).round);
+            const position = sanitizeRound((data as any).position);
+            const status = (data as any).status ?? 'pending';
+
+            await db
+                .prepare(
+                    `INSERT INTO bracket_matches
+                    (id, tournament_id, round, position, participant_a_type, participant_a_pair_id,
+                        participant_b_type, participant_b_pair_id, score_a, score_b, winner_side, status, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+                )
+                .bind(
+                    id,
+                    tournamentId,
+                    round,
+                    position,
+                    (data as any).participant_a_type,
+                    (data as any).participant_a_pair_id ?? null,
+                    (data as any).participant_b_type,
+                    (data as any).participant_b_pair_id ?? null,
+                    (data as any).score_a ?? null,
+                    (data as any).score_b ?? null,
+                    (data as any).winner_side ?? null,
+                    status,
+                    createdAt
+                )
+                .run();
+
+            return {
+                id,
+                tournament_id: tournamentId,
+                round,
+                position,
+                participant_a_type: (data as any).participant_a_type,
+                participant_a_pair_id: (data as any).participant_a_pair_id ?? null,
+                participant_b_type: (data as any).participant_b_type,
+                participant_b_pair_id: (data as any).participant_b_pair_id ?? null,
+                score_a: (data as any).score_a ?? null,
+                score_b: (data as any).score_b ?? null,
+                winner_side: (data as any).winner_side ?? null,
+                status,
+                created_at: createdAt
+            };
+        },
 		async listBracketMatches(tournamentId: string): Promise<BracketMatchRecord[]> {
 			const result = await db
 				.prepare(
@@ -176,7 +227,7 @@ export const createBracketMatchesRepositoryD1 = (db: D1Database) => {
 			for (const match of matches) {
 				const round = sanitizeRound(match.round);
 				const position = sanitizeRound(match.position);
-				const id = match.id ?? crypto.randomUUID();
+				const id = match.id ?? generateUUID();
 				const createdAt = match.created_at ?? createdAtDefault;
 				const status = match.status ?? 'pending';
 				const scoreA = match.score_a ?? null;

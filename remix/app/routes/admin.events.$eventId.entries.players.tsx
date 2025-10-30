@@ -182,7 +182,12 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 					);
 				}
 
-				const player = await db.players.updatePlayer(eventId, playerId, { name, note });
+				const existing = await db.players.ensurePlayer(playerId);
+				if (existing.event_id !== eventId) {
+					throw new Response('Player not found', { status: 404 });
+				}
+
+				const player = await db.players.updatePlayer(playerId, { name, note });
 				const { players, playersJson } = await fetchPlayers(context, eventId);
 
 				return json<ActionSuccess>({
@@ -209,7 +214,12 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 					);
 				}
 
-				await db.players.deletePlayer(eventId, playerId);
+				const existing = await db.players.ensurePlayer(playerId);
+				if (existing.event_id !== eventId) {
+					throw new Response('Player not found', { status: 404 });
+				}
+
+				await db.players.deletePlayer(playerId);
 				const { players, playersJson } = await fetchPlayers(context, eventId);
 
 				return json<ActionSuccess>({

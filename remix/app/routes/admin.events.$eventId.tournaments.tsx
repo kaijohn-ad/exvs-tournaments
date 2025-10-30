@@ -165,7 +165,12 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 		}
 
 		try {
-			const tournament = await db.tournaments.updateTournament(eventId, tournamentId, { name, format, seedingMode });
+			const existing = await db.tournaments.ensureTournament(tournamentId);
+			if (existing.eventId !== eventId) {
+				throw new Response('Tournament not found', { status: 404 });
+			}
+
+			const tournament = await db.tournaments.updateTournament(tournamentId, { name, format, seedingMode });
 			const tournaments = await db.tournaments.listTournaments(eventId);
 			const sortedTournaments = [...tournaments].sort((a, b) => a.name.localeCompare(b.name, 'ja'));
 
@@ -212,7 +217,12 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 		}
 
 		try {
-			await db.tournaments.deleteTournament(eventId, tournamentId);
+			const existing = await db.tournaments.ensureTournament(tournamentId);
+			if (existing.eventId !== eventId) {
+				throw new Response('Tournament not found', { status: 404 });
+			}
+
+			await db.tournaments.deleteTournament(tournamentId);
 		} catch (error) {
 			const tournaments = await db.tournaments.listTournaments(eventId);
 			const sortedTournaments = [...tournaments].sort((a, b) => a.name.localeCompare(b.name, 'ja'));
@@ -366,7 +376,11 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 
 		let tournament: TournamentRecord;
 		try {
-			tournament = await db.tournaments.ensureTournament(eventId, tournamentId);
+			const existing = await db.tournaments.ensureTournament(tournamentId);
+			if (existing.eventId !== eventId) {
+				throw new Response('Tournament not found', { status: 404 });
+			}
+			tournament = existing;
 		} catch (error) {
 			const tournaments = await db.tournaments.listTournaments(eventId);
 			const sortedTournaments = [...tournaments].sort((a, b) => a.name.localeCompare(b.name, 'ja'));

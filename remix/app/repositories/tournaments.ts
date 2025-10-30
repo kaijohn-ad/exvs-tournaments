@@ -1,3 +1,5 @@
+import { generateUUID } from "~/utils/uuid";
+
 export interface TournamentData {
 	name: string;
 	format?: 'single-elimination';
@@ -33,7 +35,7 @@ export const listTournaments = (eventId: string): TournamentRecord[] => {
 
 export const createTournament = (eventId: string, data: TournamentData): TournamentRecord => {
 	const record: TournamentRecord = {
-		id: crypto.randomUUID(),
+		id: generateUUID(),
 		eventId,
 		name: data.name.trim(),
 		format: data.format || 'single-elimination',
@@ -96,7 +98,7 @@ export const setTournaments = (
 		}
 
 		const record: TournamentRecord = {
-			id: entry.id?.trim() || crypto.randomUUID(),
+			id: entry.id?.trim() || generateUUID(),
 			eventId,
 			name,
 			format: entry.format || 'single-elimination',
@@ -112,4 +114,48 @@ export const setTournaments = (
 
 export const __resetForTests = () => {
 	store.clear();
+};
+
+const findTournamentById = (tournamentId: string) => {
+	for (const [eventId, eventStore] of store.entries()) {
+		const record = eventStore.get(tournamentId);
+		if (record) {
+			return { eventId, record };
+		}
+	}
+	return null;
+};
+
+export const getTournamentById = (tournamentId: string): TournamentRecord => {
+	const found = findTournamentById(tournamentId);
+	if (!found) {
+		throw new Error('Tournament not found');
+	}
+	return found.record;
+};
+
+export const updateTournamentById = (
+	tournamentId: string,
+	data: TournamentData
+): TournamentRecord => {
+	const found = findTournamentById(tournamentId);
+	if (!found) {
+		throw new Error('Tournament not found');
+	}
+	const updated: TournamentRecord = {
+		...found.record,
+		name: data.name.trim(),
+		format: data.format || found.record.format,
+		seedingMode: data.seedingMode || found.record.seedingMode
+	};
+	store.get(found.eventId)!.set(tournamentId, updated);
+	return updated;
+};
+
+export const deleteTournamentById = (tournamentId: string): void => {
+	const found = findTournamentById(tournamentId);
+	if (!found) {
+		throw new Error('Tournament not found');
+	}
+	store.get(found.eventId)!.delete(tournamentId);
 };

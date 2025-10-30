@@ -1,3 +1,4 @@
+import { generateUUID } from "~/utils/uuid";
 import type { TeamData, TeamImportData, TeamRecord } from './teams';
 
 export const createTeamsRepositoryD1 = (db: D1Database) => {
@@ -12,7 +13,7 @@ export const createTeamsRepositoryD1 = (db: D1Database) => {
 		},
 
 		async createTeam(eventId: string, data: TeamData): Promise<TeamRecord> {
-			const id = crypto.randomUUID();
+			const id = generateUUID();
 			const name = data.name.trim();
 
 			await db
@@ -79,7 +80,7 @@ export const createTeamsRepositoryD1 = (db: D1Database) => {
 					continue;
 				}
 
-				const id = entry.id?.trim() || crypto.randomUUID();
+				const id = entry.id?.trim() || generateUUID();
 
 				await db
 					.prepare('INSERT INTO teams (id, event_id, name) VALUES (?, ?, ?)')
@@ -94,6 +95,12 @@ export const createTeamsRepositoryD1 = (db: D1Database) => {
 
 			records.sort((a, b) => a.name.localeCompare(b.name, 'ja'));
 			return records;
+		},
+		async addTeamMember(teamId: string, playerId: string): Promise<void> {
+			await db
+				.prepare('INSERT INTO team_members (id, team_id, player_id) VALUES (?, ?, ?)')
+				.bind(generateUUID(), teamId, playerId)
+				.run();
 		}
 	};
 };

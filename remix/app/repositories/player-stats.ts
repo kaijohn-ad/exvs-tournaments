@@ -1,3 +1,5 @@
+import { generateUUID } from "~/utils/uuid";
+
 export interface PlayerStatsData {
 	scope: 'event' | 'tournament' | 'teamBattle' | 'global';
 	scope_id?: string;
@@ -10,8 +12,11 @@ export interface PlayerStatsImportData extends PlayerStatsData {
 	id?: string;
 }
 
-export interface PlayerStatsRecord extends PlayerStatsData {
+export interface PlayerStatsRecord {
 	id: string;
+	scope: PlayerStatsData['scope'];
+	scope_id: string | null;
+	player_id: string;
 	wins: number;
 	losses: number;
 	last_updated_at: string;
@@ -23,7 +28,7 @@ export const listPlayerStats = (scope?: string, scopeId?: string): PlayerStatsRe
 	const all = Array.from(store.values());
 	
 	if (scope && scopeId) {
-		return all.filter(s => s.scope === scope && s.scope_id === scopeId);
+		return all.filter(s => s.scope === scope && s.scope_id === (scopeId ?? null));
 	}
 	
 	if (scope) {
@@ -38,18 +43,18 @@ export const getPlayerStats = (playerId: string, scope: string, scopeId?: string
 	return all.find(s => 
 		s.player_id === playerId && 
 		s.scope === scope && 
-		s.scope_id === scopeId
+		s.scope_id === (scopeId ?? null)
 	) ?? null;
 };
 
 export const createPlayerStats = (data: PlayerStatsData): PlayerStatsRecord => {
-	const id = crypto.randomUUID();
+	const id = generateUUID();
 	const now = new Date().toISOString();
 
 	const record: PlayerStatsRecord = {
 		id,
 		scope: data.scope,
-		scope_id: data.scope_id,
+		scope_id: data.scope_id ?? null,
 		player_id: data.player_id,
 		wins: data.wins ?? 0,
 		losses: data.losses ?? 0,
@@ -77,7 +82,7 @@ export const updatePlayerStats = (statsId: string, data: PlayerStatsData): Playe
 	const updated: PlayerStatsRecord = {
 		...existing,
 		scope: data.scope,
-		scope_id: data.scope_id,
+		scope_id: data.scope_id ?? null,
 		player_id: data.player_id,
 		wins: data.wins ?? existing.wins,
 		losses: data.losses ?? existing.losses,
@@ -130,16 +135,16 @@ export const setPlayerStats = (stats: PlayerStatsImportData[]): PlayerStatsRecor
 			continue;
 		}
 
-		const id = stat.id ?? crypto.randomUUID();
-		const record: PlayerStatsRecord = {
-			id,
-			scope: stat.scope,
-			scope_id: stat.scope_id,
-			player_id: stat.player_id,
-			wins: stat.wins ?? 0,
-			losses: stat.losses ?? 0,
-			last_updated_at: now
-		};
+		const id = stat.id ?? generateUUID();
+	const record: PlayerStatsRecord = {
+		id,
+		scope: stat.scope,
+		scope_id: stat.scope_id ?? null,
+		player_id: stat.player_id,
+		wins: stat.wins ?? 0,
+		losses: stat.losses ?? 0,
+		last_updated_at: now
+	};
 
 		store.set(id, record);
 		results.push(record);

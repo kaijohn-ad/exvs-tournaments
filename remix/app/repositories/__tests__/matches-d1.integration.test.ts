@@ -128,31 +128,31 @@ describe("Matches D1 Integration Tests", () => {
 		const database = getTestDatabaseContext();
 
 		// 異なるコンテキストのマッチを作成
-		const bracketMatch = await database.matches.createMatch({
-			context: "bracket",
-			context_id: "tournament-1",
-			side_a_type: "pair",
-			side_a_pair_id: pair1Id,
-			side_b_type: "pair",
-			side_b_pair_id: pair2Id,
-			score_a: 2,
-			score_b: 1,
-			winner_side: "a",
-			status: "completed"
-		});
+	const bracketMatch = await database.matches.createMatch({
+		context: "bracket" as const,
+		context_id: "tournament-1",
+		side_a_type: "pair" as const,
+		side_a_pair_id: pair1Id,
+		side_b_type: "pair" as const,
+		side_b_pair_id: pair2Id,
+		score_a: 2,
+		score_b: 1,
+		winner_side: "a" as const,
+		status: "completed" as const
+	});
 
-		const teamBattleMatch = await database.matches.createMatch({
-			context: "teamBattle",
-			context_id: "team-battle-1",
-			side_a_type: "pair",
-			side_a_pair_id: pair1Id,
-			side_b_type: "pair",
-			side_b_pair_id: pair2Id,
-			score_a: 1,
-			score_b: 2,
-			winner_side: "b",
-			status: "completed"
-		});
+	const teamBattleMatch = await database.matches.createMatch({
+		context: "teamBattle" as const,
+		context_id: "team-battle-1",
+		side_a_type: "pair" as const,
+		side_a_pair_id: pair1Id,
+		side_b_type: "pair" as const,
+		side_b_pair_id: pair2Id,
+		score_a: 1,
+		score_b: 2,
+		winner_side: "b" as const,
+		status: "completed" as const
+	});
 
 		// コンテキスト別にマッチを取得
 		const bracketMatches = await database.matches.listMatches("bracket", "tournament-1");
@@ -170,27 +170,28 @@ describe("Matches D1 Integration Tests", () => {
 	test("should update match", async () => {
 		const database = getTestDatabaseContext();
 
-		const matchData = {
-			context: "bracket",
-			context_id: "tournament-1",
-			side_a_type: "pair",
-			side_a_pair_id: pair1Id,
-			side_b_type: "pair",
-			side_b_pair_id: pair2Id,
-			score_a: 2,
-			score_b: 1,
-			winner_side: "a",
-			status: "completed"
-		};
+	const matchData = {
+		context: "bracket" as const,
+		context_id: "tournament-1",
+		side_a_type: "pair" as const,
+		side_a_pair_id: pair1Id,
+		side_b_type: "pair" as const,
+		side_b_pair_id: pair2Id,
+		score_a: 2,
+		score_b: 1,
+		winner_side: "a" as const,
+		status: "completed" as const
+	};
 
 		const createdMatch = await database.matches.createMatch(matchData);
 		
-		const updateData = {
-			score_a: 3,
-			score_b: 0,
-			winner_side: "a" as const,
-			status: "completed" as const
-		};
+	const updateData = {
+		...matchData,
+		score_a: 3,
+		score_b: 0,
+		winner_side: "a" as const,
+		status: "completed" as const
+	};
 
 		const updatedMatch = await database.matches.updateMatch(createdMatch.id, updateData);
 		
@@ -210,18 +211,18 @@ describe("Matches D1 Integration Tests", () => {
 	test("should delete match", async () => {
 		const database = getTestDatabaseContext();
 
-		const matchData = {
-			context: "bracket",
-			context_id: "tournament-1",
-			side_a_type: "pair",
-			side_a_pair_id: pair1Id,
-			side_b_type: "pair",
-			side_b_pair_id: pair2Id,
-			score_a: 2,
-			score_b: 1,
-			winner_side: "a",
-			status: "completed"
-		};
+	const matchData = {
+		context: "bracket" as const,
+		context_id: "tournament-1",
+		side_a_type: "pair" as const,
+		side_a_pair_id: pair1Id,
+		side_b_type: "pair" as const,
+		side_b_pair_id: pair2Id,
+		score_a: 2,
+		score_b: 1,
+		winner_side: "a" as const,
+		status: "completed" as const
+	};
 
 		const createdMatch = await database.matches.createMatch(matchData);
 		
@@ -295,35 +296,35 @@ describe("Matches D1 Integration Tests", () => {
 		const database = getTestDatabaseContext();
 
 		// 異なる時間でマッチを作成
-		const match1 = await database.matches.createMatch({
-			context: "bracket",
-			context_id: "tournament-1",
-			side_a_type: "pair",
-			side_a_pair_id: pair1Id,
-			side_b_type: "pair",
-			side_b_pair_id: pair2Id,
-			score_a: 2,
-			score_b: 1,
-			winner_side: "a",
-			status: "completed",
-			played_at: "2024-01-01T10:00:00Z"
-		});
+	const match1 = await database.matches.createMatch({
+		context: "bracket" as const,
+		context_id: "tournament-1",
+		side_a_type: "pair" as const,
+		side_a_pair_id: pair1Id,
+		side_b_type: "pair" as const,
+		side_b_pair_id: pair2Id,
+		score_a: 2,
+		score_b: 1,
+		winner_side: "a" as const,
+		status: "completed" as const,
+		played_at: "2024-01-01T10:00:00Z"
+	});
 
 		// 少し待ってから次のマッチを作成
 		await new Promise(resolve => setTimeout(resolve, 10));
 
-		const match2 = await database.matches.createMatch({
-			context: "bracket",
-			context_id: "tournament-1",
-			side_a_type: "pair",
-			side_a_pair_id: pair1Id,
-			side_b_type: "pair",
-			side_b_pair_id: pair2Id,
-			score_a: 1,
-			score_b: 2,
-			winner_side: "b",
-			status: "completed"
-		});
+	const match2 = await database.matches.createMatch({
+		context: "bracket" as const,
+		context_id: "tournament-1",
+		side_a_type: "pair" as const,
+		side_a_pair_id: pair1Id,
+		side_b_type: "pair" as const,
+		side_b_pair_id: pair2Id,
+		score_a: 1,
+		score_b: 2,
+		winner_side: "b" as const,
+		status: "completed" as const
+	});
 
 		// マッチ一覧を取得
 		const matches = await database.matches.listMatches();

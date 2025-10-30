@@ -74,7 +74,7 @@ describe("Events D1 Integration Tests", () => {
 		const events = await database.events.listEvents();
 		const foundEvent = events.find(e => e.slug === "non-existent-slug");
 		
-		expect(foundEvent).toBeNull();
+		expect(foundEvent).toBeUndefined();
 	});
 
 	test("should update event", async () => {
@@ -130,7 +130,7 @@ describe("Events D1 Integration Tests", () => {
 		// スラッグで検索しても見つからないことを確認
 		const events = await database.events.listEvents();
 		const foundEvent = events.find(e => e.slug === eventData.slug);
-		expect(foundEvent).toBeNull();
+		expect(foundEvent).toBeUndefined();
 	});
 
 	test("should handle multiple events", async () => {

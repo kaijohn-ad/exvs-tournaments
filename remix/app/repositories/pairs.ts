@@ -1,15 +1,22 @@
+import { generateUUID } from "~/utils/uuid";
+
 export interface PairData {
 	player1_id: string;
 	player2_id: string;
-	seed?: number;
+	seed?: number | null;
 }
 
 export interface PairImportData extends PairData {
 	id?: string;
 }
 
-export interface PairRecord extends PairData {
+export interface PairRecord {
 	id: string;
+	event_id: string;
+	player1_id: string;
+	player2_id: string;
+	seed: number | null;
+	created_at: string;
 }
 
 const store = new Map<string, Map<string, PairRecord>>();
@@ -30,11 +37,14 @@ export const listPairs = (eventId: string): PairRecord[] => {
 };
 
 export const createPair = (eventId: string, data: PairData): PairRecord => {
+	const now = new Date().toISOString();
 	const record: PairRecord = {
-		id: crypto.randomUUID(),
+		id: generateUUID(),
+		event_id: eventId,
 		player1_id: data.player1_id.trim(),
 		player2_id: data.player2_id.trim(),
-		seed: data.seed
+		seed: data.seed ?? null,
+		created_at: now
 	};
 
 	getEventStore(eventId).set(record.id, record);
@@ -58,7 +68,7 @@ export const updatePair = (eventId: string, pairId: string, data: PairData): Pai
 		...existing,
 		player1_id: data.player1_id.trim(),
 		player2_id: data.player2_id.trim(),
-		seed: data.seed
+		seed: data.seed ?? null
 	};
 
 	getEventStore(eventId).set(pairId, updated);
@@ -87,16 +97,60 @@ export const setPairs = (eventId: string, pairs: PairImportData[]): PairRecord[]
 		}
 
 		const record: PairRecord = {
-			id: entry.id?.trim() || crypto.randomUUID(),
+			id: entry.id?.trim() || generateUUID(),
+			event_id: eventId,
 			player1_id,
 			player2_id,
-			seed: entry.seed
+			seed: entry.seed ?? null,
+			created_at: new Date().toISOString()
 		};
 
 		eventStore.set(record.id, record);
 	}
 
 	return Array.from(eventStore.values()).sort((a, b) => (a.seed || 0) - (b.seed || 0));
+};
+
+const findPairById = (pairId: string) => {
+	for (const [eventId, eventStore] of store.entries()) {
+		const record = eventStore.get(pairId);
+		if (record) {
+			return { eventId, record };
+		}
+	}
+	return null;
+};
+
+export const getPairById = (pairId: string): PairRecord => {
+	const found = findPairById(pairId);
+	if (!found) {
+		throw new Error('Pair not found');
+	}
+	return found.record;
+};
+
+export const updatePairById = (pairId: string, data: PairData): PairRecord => {
+	const found = findPairById(pairId);
+	if (!found) {
+		throw new Error('Pair not found');
+	}
+	const updated: PairRecord = {
+		...found.record,
+		player1_id: data.player1_id.trim(),
+		player2_id: data.player2_id.trim(),
+		seed: data.seed ?? null,
+		created_at: found.record.created_at
+	};
+	store.get(found.eventId)!.set(pairId, updated);
+	return updated;
+};
+
+export const deletePairById = (pairId: string): void => {
+	const found = findPairById(pairId);
+	if (!found) {
+		throw new Error('Pair not found');
+	}
+	store.get(found.eventId)!.delete(pairId);
 };
 
 export const __resetForTests = () => {

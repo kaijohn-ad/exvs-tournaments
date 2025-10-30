@@ -152,7 +152,7 @@ const resolveSlotPlayers = async (
 	const players: string[] = [];
 
 	if (slot.assignment_type === "pair" && slot.pair_id) {
-		const pair = await db.pairs.ensurePair(eventId, slot.pair_id);
+		const pair = await db.pairs.ensurePair(slot.pair_id);
 		if (pair.player1_id) players.push(pair.player1_id);
 		if (pair.player2_id) players.push(pair.player2_id);
 	} else {

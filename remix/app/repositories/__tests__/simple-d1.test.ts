@@ -1,6 +1,8 @@
 import { describe, expect, test } from "vitest";
+import { generateUUID } from "~/utils/uuid";
 import { getDatabase } from "../database.server";
 import type { AppLoadContext } from "@remix-run/cloudflare";
+import type { CloudflareContext } from "../../../load-context";
 
 // 簡単なモックD1データベース
 const createSimpleMockDb = () => {
@@ -41,25 +43,24 @@ const createSimpleMockDb = () => {
 					run: async () => {
 						const tableName = sql.match(/INSERT\s+INTO\s+(\w+)/i)?.[1];
 						if (tableName) {
-							const id = crypto.randomUUID();
 							const now = new Date().toISOString();
-							
-							let record: any = { id, created_at: now };
+							const recordId = (params[0] as string | undefined) || generateUUID();
+							let record: any = { id: recordId, created_at: now };
 							
 							if (tableName === 'events') {
 								record = {
-									id,
-									name: params[0] || '',
-									slug: params[1] || null,
-									created_at: now
+									id: recordId,
+									name: params[1] ?? '',
+									slug: params[2] ?? null,
+									created_at: params[3] ?? now
 								};
 							} else if (tableName === 'players') {
 								record = {
-									id,
-									event_id: params[0] || '',
-									name: params[1] || '',
-									note: params[2] || null,
-									created_at: now
+									id: recordId,
+									event_id: params[1] ?? '',
+									name: params[2] ?? '',
+									note: params[3] ?? null,
+									created_at: params[4] ?? now
 								};
 							}
 							
@@ -81,16 +82,30 @@ const createSimpleMockDb = () => {
 	};
 };
 
+const createAppContext = (db?: D1Database): AppLoadContext => {
+	const cloudflare: CloudflareContext = {
+		env: {
+			DB: (db ?? (undefined as unknown as D1Database)),
+		} as Env,
+		ctx: {
+			waitUntil: () => {},
+			passThroughOnException: () => {},
+			props: {},
+		},
+		caches: (globalThis as unknown as { caches?: CacheStorage }).caches || ({} as CacheStorage),
+		cf: {} as Request["cf"],
+	};
+
+	return {
+		cloudflare,
+		db,
+	} as AppLoadContext;
+};
+
 describe("Simple D1 Integration Tests", () => {
 	test("should create and list events with memory database", async () => {
 		// メモリデータベースを使用
-		const context: AppLoadContext = {
-			cloudflare: {
-				env: {
-					// DBバインディングなし
-				},
-			},
-		};
+	const context = createAppContext();
 
 		const database = getDatabase(context);
 
@@ -115,13 +130,7 @@ describe("Simple D1 Integration Tests", () => {
 
 	test("should create and list players with memory database", async () => {
 		// メモリデータベースを使用
-		const context: AppLoadContext = {
-			cloudflare: {
-				env: {
-					// DBバインディングなし
-				},
-			},
-		};
+	const context = createAppContext();
 
 		const database = getDatabase(context);
 
@@ -151,20 +160,8 @@ describe("Simple D1 Integration Tests", () => {
 
 	test("should handle database factory with D1 binding", async () => {
 		// D1バインディングありのコンテキスト
-		const mockDb = createSimpleMockDb();
-		const context: AppLoadContext = {
-			cloudflare: {
-				env: {
-					DB: mockDb as unknown as D1Database,
-				},
-				ctx: {
-					waitUntil: () => {},
-					passThroughOnException: () => {},
-					props: {},
-				},
-			},
-			db: mockDb as unknown as D1Database,
-		};
+	const mockDb = createSimpleMockDb();
+	const context = createAppContext(mockDb as unknown as D1Database);
 
 		const database = getDatabase(context);
 
@@ -190,20 +187,8 @@ describe("Simple D1 Integration Tests", () => {
 
 	test("should force memory database when useMemory option is set", async () => {
 		// D1バインディングありだが、useMemoryオプションで強制的にメモリを使用
-		const mockDb = createSimpleMockDb();
-		const context: AppLoadContext = {
-			cloudflare: {
-				env: {
-					DB: mockDb as unknown as D1Database,
-				},
-				ctx: {
-					waitUntil: () => {},
-					passThroughOnException: () => {},
-					props: {},
-				},
-			},
-			db: mockDb as unknown as D1Database,
-		};
+	const mockDb = createSimpleMockDb();
+	const context = createAppContext(mockDb as unknown as D1Database);
 
 		const database = getDatabase(context, { useMemory: true });
 

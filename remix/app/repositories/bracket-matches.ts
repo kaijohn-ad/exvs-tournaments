@@ -1,3 +1,5 @@
+import { generateUUID } from "~/utils/uuid";
+
 export interface BracketMatchData {
 	round: number;
 	position: number;
@@ -128,7 +130,7 @@ export const createBracketMatch = (
 	data: BracketMatchData
 ): BracketMatchRecord => {
 	const tournamentStore = getTournamentStore(tournamentId);
-	const id = crypto.randomUUID();
+	const id = generateUUID();
 	const createdAt = new Date().toISOString();
 
 	const record = buildRecord(tournamentId, id, data, createdAt);
@@ -226,7 +228,7 @@ export const setBracketMatches = (
 			continue;
 		}
 
-		const id = match.id?.trim() || crypto.randomUUID();
+		const id = match.id?.trim() || generateUUID();
 		const createdAt = match.created_at ?? createdAtDefault;
 		const record = buildRecord(tournamentId, id, match, createdAt);
 

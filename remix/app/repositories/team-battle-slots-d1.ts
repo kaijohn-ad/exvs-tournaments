@@ -1,3 +1,4 @@
+import { generateUUID } from "~/utils/uuid";
 import type {
 	TeamBattleSlotData,
 	TeamBattleSlotImportData,
@@ -37,7 +38,7 @@ export const createTeamBattleSlotsRepositoryD1 = (db: D1Database) => {
 	};
 
 	const createTeamBattleSlot = async (data: TeamBattleSlotData): Promise<TeamBattleSlotRecord> => {
-		const id = crypto.randomUUID();
+		const id = generateUUID();
 
 		await db
 			.prepare(
@@ -215,7 +216,7 @@ export const createTeamBattleSlotsRepositoryD1 = (db: D1Database) => {
 				continue;
 			}
 
-			const id = slot.id ?? crypto.randomUUID();
+			const id = slot.id ?? generateUUID();
 
 			await db
 				.prepare(

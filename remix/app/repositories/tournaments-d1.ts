@@ -1,3 +1,4 @@
+import { generateUUID } from "~/utils/uuid";
 import type { TournamentData, TournamentImportData, TournamentRecord } from './tournaments';
 
 export const createTournamentsRepositoryD1 = (db: D1Database) => {
@@ -37,7 +38,7 @@ export const createTournamentsRepositoryD1 = (db: D1Database) => {
 		},
 
 		async createTournament(eventId: string, data: TournamentData): Promise<TournamentRecord> {
-			const id = crypto.randomUUID();
+			const id = generateUUID();
 			const name = data.name.trim();
 			const format = data.format || 'single-elimination';
 			const seedingMode = data.seedingMode || 'random';
@@ -60,12 +61,12 @@ export const createTournamentsRepositoryD1 = (db: D1Database) => {
 			};
 		},
 
-		async ensureTournament(eventId: string, tournamentId: string): Promise<TournamentRecord> {
+		async ensureTournament(tournamentId: string): Promise<TournamentRecord> {
 			const result = await db
 				.prepare(
-					'SELECT id, event_id, name, format, seeding_mode, created_at FROM tournaments WHERE id = ? AND event_id = ?'
+					'SELECT id, event_id, name, format, seeding_mode, created_at FROM tournaments WHERE id = ?'
 				)
-				.bind(tournamentId, eventId)
+				.bind(tournamentId)
 				.first<{
 					id: string;
 					event_id: string;
@@ -90,11 +91,10 @@ export const createTournamentsRepositoryD1 = (db: D1Database) => {
 		},
 
 		async updateTournament(
-			eventId: string,
 			tournamentId: string,
 			data: TournamentData
 		): Promise<TournamentRecord> {
-			const existing = await this.ensureTournament(eventId, tournamentId);
+			const existing = await this.ensureTournament(tournamentId);
 
 			const name = data.name.trim();
 			const format = data.format || existing.format;
@@ -102,14 +102,14 @@ export const createTournamentsRepositoryD1 = (db: D1Database) => {
 
 			await db
 				.prepare(
-					'UPDATE tournaments SET name = ?, format = ?, seeding_mode = ? WHERE id = ? AND event_id = ?'
+					'UPDATE tournaments SET name = ?, format = ?, seeding_mode = ? WHERE id = ?'
 				)
-				.bind(name, format, seedingMode, tournamentId, eventId)
+				.bind(name, format, seedingMode, tournamentId)
 				.run();
 
 			return {
 				id: tournamentId,
-				eventId,
+				eventId: existing.eventId,
 				name,
 				format,
 				seedingMode,
@@ -117,10 +117,10 @@ export const createTournamentsRepositoryD1 = (db: D1Database) => {
 			};
 		},
 
-		async deleteTournament(eventId: string, tournamentId: string): Promise<void> {
+		async deleteTournament(tournamentId: string): Promise<void> {
 			const result = await db
-				.prepare('DELETE FROM tournaments WHERE id = ? AND event_id = ?')
-				.bind(tournamentId, eventId)
+				.prepare('DELETE FROM tournaments WHERE id = ?')
+				.bind(tournamentId)
 				.run();
 
 			if (result.meta.changes === 0) {
@@ -141,7 +141,7 @@ export const createTournamentsRepositoryD1 = (db: D1Database) => {
 					continue;
 				}
 
-				const id = entry.id?.trim() || crypto.randomUUID();
+				const id = entry.id?.trim() || generateUUID();
 				const format = entry.format || 'single-elimination';
 				const seedingMode = entry.seedingMode || 'random';
 				const createdAt = new Date().toISOString();
