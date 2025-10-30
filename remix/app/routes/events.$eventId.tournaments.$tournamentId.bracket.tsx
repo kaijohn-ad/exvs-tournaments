@@ -321,7 +321,7 @@ export default function PublicBracketRoute() {
 					</p>
 				</div>
 				<Link
-					to={`/events/${eventId}`}
+					to="/events"
 					className="inline-flex items-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
 				>
 					← イベント一覧に戻る
