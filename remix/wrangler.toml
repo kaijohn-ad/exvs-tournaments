@@ -4,7 +4,25 @@ upload_source_maps = true
 pages_build_output_dir = "build/client"
 compatibility_flags = ["nodejs_compat"]
 
+migrations_dir = "migrations"
+
+# Production environment (default/Cloudflare Pages Production)
+# トップレベル設定は Production 環境のデフォルトとして使用される
 [[d1_databases]]
 binding = "DB"
 database_name = "exvs-tournaments-db"
 database_id = "40f8521b-2bb5-4887-bd73-3f3e2fc56521"
+
+# Production environment (明示的な設定 - トップレベルと同じ)
+[env.production]
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "exvs-tournaments-db"
+database_id = "40f8521b-2bb5-4887-bd73-3f3e2fc56521"
+
+# Preview environment (Cloudflare Pages Preview/開発環境)
+[env.preview]
+[[env.preview.d1_databases]]
+binding = "DB"
+database_name = "exvs-tournaments-dev"
+database_id = "4d86595e-81c8-467c-900c-b474d6fa584f"

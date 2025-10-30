@@ -231,23 +231,26 @@
     - UX改善: イベント一覧の `<a>` を `<Link>` に変更してSPA遷移を実現
 
 ### 優先度高：開発・本番環境のDB分離
-- [ ] 開発用D1データベースの設定
-  - [ ] 開発用D1データベースの作成（`exvs-tournaments-dev`）
-  - [ ] 開発環境用のwrangler.toml設定
-  - [ ] 開発用マイグレーションの適用
+- [x] 開発用D1データベースの設定
+  - [x] 開発用D1データベースの作成（`exvs-tournaments-dev`）
+  - [x] 開発環境用のwrangler.toml設定
+  - [x] 開発用マイグレーションの適用
+- [x] Cloudflare Pages Preview/Production環境の設定
+  - [x] Preview環境用D1データベース設定（`env.preview`）
+  - [x] Production環境用D1データベース設定（`env.production`）
+  - [x] wrangler.toml/wrangler.json の環境別設定更新
+  - [x] Preview/Production環境へのマイグレーション適用
+  - [x] ドキュメント更新（Preview/Production前提に変更）
+- [ ] Cloudflare Pages の環境別デプロイ設定確認
+  - [ ] Productionブランチ設定確認（`feature/remix-workers-migration` → 移行完了後 `master`）
+  - [ ] Previewブランチ設定確認（上記以外の全ブランチ）
+  - [ ] 環境変数の環境別設定確認
 - [ ] 環境別データベース設定の実装
-  - [ ] 環境変数によるDB選択機能の実装
-  - [ ] 開発・本番環境の切り替え機能
-  - [ ] データベース接続の環境別設定
+  - [x] Cloudflare Pages の環境（Preview/Production）による自動DB選択（`wrangler.toml` で設定済み）
+  - [ ] データベース接続の環境別ログ出力
 - [ ] テスト環境の整備
-  - [ ] テスト専用D1データベースの設定
-  - [ ] テスト用マイグレーションの作成
-  - [ ] CI/CDでのテスト環境利用
-- [ ] デプロイブランチの分離
-  - [ ] 本番環境: `master` ブランチ
-  - [ ] 開発環境: `develop` ブランチ
-  - [ ] GitHub Actions での環境別デプロイ設定
-  - [ ] Cloudflare Pages での環境別デプロイ設定
+  - [x] Preview環境（`exvs-tournaments-dev`）がテスト環境として利用可能
+  - [ ] CI/CDでのPreview環境利用
 
 ### 優先度高：トーナメントブラケット機能
 - [ ] トーナメント参加者登録機能
