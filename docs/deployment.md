@@ -20,16 +20,6 @@
 
 Cloudflare Pages では、Productionブランチへのデプロイは自動的にProduction環境に、それ以外のブランチはPreview環境にデプロイされます。
 
-### 環境ステージ識別（ENVIRONMENT_STAGE）
-
-本プロジェクトでは、データベース接続状況を環境別にログ出力するため、`ENVIRONMENT_STAGE` 環境変数を使用して環境を識別します。
-
-- **Production環境**: `ENVIRONMENT_STAGE = "production"`（`wrangler.toml`/`wrangler.json` の `[env.production.vars]` で設定）
-- **Preview環境**: `ENVIRONMENT_STAGE = "preview"`（`wrangler.toml`/`wrangler.json` の `[env.preview.vars]` で設定）
-- **開発環境**: `ENVIRONMENT_STAGE` が未設定の場合、`NODE_ENV` に基づいて自動判定（`NODE_ENV=production` なら `"production"`、それ以外は `"development"`）
-
-この環境変数は `wrangler.toml` と `wrangler.json` の両方に設定されており、Cloudflare Pages のデプロイ時に自動的に適用されます。データベース接続時には、この環境ステージ情報がJSONログとして出力され、接続状況の監視に使用されます。
-
 ## Production D1 Database Setup
 
 ### 1. Create Production Database

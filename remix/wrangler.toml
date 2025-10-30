@@ -15,8 +15,6 @@ database_id = "40f8521b-2bb5-4887-bd73-3f3e2fc56521"
 
 # Production environment (明示的な設定 - トップレベルと同じ)
 [env.production]
-[env.production.vars]
-ENVIRONMENT_STAGE = "production"
 [[env.production.d1_databases]]
 binding = "DB"
 database_name = "exvs-tournaments-db"
@@ -24,8 +22,6 @@ database_id = "40f8521b-2bb5-4887-bd73-3f3e2fc56521"
 
 # Preview environment (Cloudflare Pages Preview/開発環境)
 [env.preview]
-[env.preview.vars]
-ENVIRONMENT_STAGE = "preview"
 [[env.preview.d1_databases]]
 binding = "DB"
 database_name = "exvs-tournaments-dev"
