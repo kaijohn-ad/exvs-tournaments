@@ -216,6 +216,15 @@ export const createTournamentParticipantsRepositoryD1 = (db: D1Database) => {
 			}
 		},
 
+		async removeAll(tournamentId: string): Promise<void> {
+			await db
+				.prepare(
+					'UPDATE tournament_participants SET status = \'removed\' WHERE tournament_id = ? AND status = \'active\''
+				)
+				.bind(tournamentId)
+				.run();
+		},
+
 		async setSeed(
 			tournamentId: string,
 			participantId: string,

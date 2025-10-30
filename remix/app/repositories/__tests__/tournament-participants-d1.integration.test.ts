@@ -257,5 +257,51 @@ describe("Tournament Participants D1 Integration Tests", () => {
 		expect(participants[1].seed).toBe(2);
 		expect(participants[2].seed).toBe(3);
 	});
+
+	test("should remove all participants", async () => {
+		const database = getTestDatabaseContext();
+		
+		// 複数の参加者を追加
+		const participant1 = await database.tournamentParticipants.addPair(tournamentId, pair1Id, { seed: 1 });
+		const participant2 = await database.tournamentParticipants.addPair(tournamentId, pair2Id, { seed: 2 });
+		
+		let participants = await database.tournamentParticipants.listParticipants(tournamentId);
+		expect(participants).toHaveLength(2);
+
+		// 全削除
+		await database.tournamentParticipants.removeAll(tournamentId);
+		
+		participants = await database.tournamentParticipants.listParticipants(tournamentId);
+		expect(participants).toHaveLength(0);
+	});
+
+	test("should remove all participants (solo mode)", async () => {
+		const database = getTestDatabaseContext();
+		
+		// ソロモードのトーナメントを作成
+		const soloTournament = await database.tournaments.createTournament(eventId, {
+			name: "Solo Tournament",
+			entryMode: "solo"
+		});
+
+		// 複数のプレイヤーを作成
+		const player3 = await database.players.createPlayer(eventId, { name: "Player 3" });
+		const player4 = await database.players.createPlayer(eventId, { name: "Player 4" });
+
+		// 複数の参加者を追加
+		await database.tournamentParticipants.addSolo(soloTournament.id, player1Id);
+		await database.tournamentParticipants.addSolo(soloTournament.id, player2Id);
+		await database.tournamentParticipants.addSolo(soloTournament.id, player3.id);
+		await database.tournamentParticipants.addSolo(soloTournament.id, player4.id);
+		
+		let participants = await database.tournamentParticipants.listParticipants(soloTournament.id);
+		expect(participants).toHaveLength(4);
+
+		// 全削除
+		await database.tournamentParticipants.removeAll(soloTournament.id);
+		
+		participants = await database.tournamentParticipants.listParticipants(soloTournament.id);
+		expect(participants).toHaveLength(0);
+	});
 });
 

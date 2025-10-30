@@ -16,6 +16,7 @@ import type { TournamentRecord } from "~/repositories/tournaments";
 import type { TournamentParticipantRecord } from "~/repositories/tournament-participants";
 import type { PairRecord } from "~/repositories/pairs";
 import type { PlayerRecord } from "~/repositories/players";
+import { chooseDisjointPairs } from "~/utils/participants";
 
 type LoaderData = {
 	eventId: string;
@@ -29,13 +30,13 @@ type LoaderData = {
 type ActionData =
 	| {
 			type: "success";
-			source: "addPair" | "addSolo" | "remove" | "setSeed" | "pairManual" | "pairAuto";
+			source: "addPair" | "addSolo" | "remove" | "setSeed" | "pairManual" | "pairAuto" | "addAll" | "removeAll";
 			message: string;
 			participants: TournamentParticipantRecord[];
 	  }
 	| {
 			type: "error";
-			source: "addPair" | "addSolo" | "remove" | "setSeed" | "pairManual" | "pairAuto";
+			source: "addPair" | "addSolo" | "remove" | "setSeed" | "pairManual" | "pairAuto" | "addAll" | "removeAll";
 			message: string;
 	  };
 
@@ -112,6 +113,8 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 		| "setSeed"
 		| "pairManual"
 		| "pairAuto"
+		| "addAll"
+		| "removeAll"
 		| undefined;
 
 	try {
@@ -355,6 +358,120 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 					{ status: 400 }
 				);
 			}
+		}
+
+		if (intent === "addAll") {
+			const existingParticipants = await db.tournamentParticipants.listParticipants(tournamentId);
+			
+			if (tournament.entryMode === "pair") {
+				// ペアモード: イベント内の全ペアを取得
+				const allPairs = await db.pairs.listPairs(eventId);
+				
+				// seed昇順でソート（nullは末尾）
+				const sortedPairs = [...allPairs].sort((a, b) => {
+					if (a.seed === null && b.seed === null) return 0;
+					if (a.seed === null) return 1;
+					if (b.seed === null) return -1;
+					return a.seed - b.seed;
+				});
+
+				// 既存参加者から使用済みプレイヤーIDとペアIDを取得
+				const usedPlayerIds = new Set<string>();
+				const existingPairIds = new Set<string>();
+
+				for (const participant of existingParticipants) {
+					if (participant.participant_type === "pair" && participant.pair_id) {
+						existingPairIds.add(participant.pair_id);
+						// ペアのプレイヤーIDを取得
+						const pair = allPairs.find(p => p.id === participant.pair_id);
+						if (pair) {
+							usedPlayerIds.add(pair.player1_id);
+							usedPlayerIds.add(pair.player2_id);
+						}
+					} else if (participant.participant_type === "solo" && participant.player_id) {
+						usedPlayerIds.add(participant.player_id);
+					}
+				}
+
+				// 重複しないペアを選択
+				const pairsToAdd = chooseDisjointPairs(sortedPairs, usedPlayerIds, existingPairIds);
+
+				// 選択したペアを追加
+				let addedCount = 0;
+				for (const pair of pairsToAdd) {
+					try {
+						await db.tournamentParticipants.addPair(tournamentId, pair.id, {
+							seed: pair.seed ?? null
+						});
+						addedCount++;
+					} catch (error) {
+						// 個別のエラーは無視（既に追加済みなど）
+					}
+				}
+
+				const participants = await db.tournamentParticipants.listParticipants(tournamentId);
+
+				return json<ActionData>({
+					type: "success",
+					source: "addAll",
+					message: `${addedCount}組のペアを追加しました。`,
+					participants,
+				});
+			} else if (tournament.entryMode === "solo") {
+				// ソロモード: イベント内の全プレイヤーを取得
+				const allPlayers = await db.players.listPlayers(eventId);
+				// ペアも取得（ペア参加者のプレイヤーIDを取得するため）
+				const allPairs = await db.pairs.listPairs(eventId);
+
+				// 既存参加者から使用済みプレイヤーIDを取得
+				const usedPlayerIds = new Set<string>();
+				for (const participant of existingParticipants) {
+					if (participant.participant_type === "pair" && participant.pair_id) {
+						// ペア参加者の場合は両方のプレイヤーを記録
+						const pair = allPairs.find(p => p.id === participant.pair_id);
+						if (pair) {
+							usedPlayerIds.add(pair.player1_id);
+							usedPlayerIds.add(pair.player2_id);
+						}
+					} else if (participant.participant_type === "solo" && participant.player_id) {
+						usedPlayerIds.add(participant.player_id);
+					}
+				}
+
+				// 未使用のプレイヤーを追加
+				let addedCount = 0;
+				for (const player of allPlayers) {
+					if (!usedPlayerIds.has(player.id)) {
+						try {
+							await db.tournamentParticipants.addSolo(tournamentId, player.id);
+							addedCount++;
+						} catch (error) {
+							// 個別のエラーは無視
+						}
+					}
+				}
+
+				const participants = await db.tournamentParticipants.listParticipants(tournamentId);
+
+				return json<ActionData>({
+					type: "success",
+					source: "addAll",
+					message: `${addedCount}名のプレイヤーを追加しました。`,
+					participants,
+				});
+			}
+		}
+
+		if (intent === "removeAll") {
+			await db.tournamentParticipants.removeAll(tournamentId);
+			const participants = await db.tournamentParticipants.listParticipants(tournamentId);
+
+			return json<ActionData>({
+				type: "success",
+				source: "removeAll",
+				message: "すべての参加者を削除しました。",
+				participants,
+			});
 		}
 
 		return json<ActionData>(
@@ -621,6 +738,38 @@ export default function TournamentParticipantsRoute() {
 						</button>
 					</div>
 				</Form>
+
+				{/* 一括操作 */}
+				<div className="mt-6 border-t border-slate-200 pt-6">
+					<h3 className="text-sm font-semibold text-slate-900 mb-3">一括操作</h3>
+					<div className="flex gap-3">
+						<Form method="post" className="flex-1">
+							<input type="hidden" name="_intent" value="addAll" />
+							<button
+								type="submit"
+								disabled={isSubmitting}
+								className="w-full rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-green-700 disabled:opacity-50"
+							>
+								{isSubmitting ? "処理中..." : entryMode === "pair" ? "全ペアを追加" : "全プレイヤーを追加"}
+							</button>
+						</Form>
+						<Form method="post" className="flex-1">
+							<input type="hidden" name="_intent" value="removeAll" />
+							<button
+								type="submit"
+								disabled={isSubmitting || participants.length === 0}
+								onClick={(e) => {
+									if (!confirm("すべての参加者を削除しますか？この操作は取り消せません。")) {
+										e.preventDefault();
+									}
+								}}
+								className="w-full rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+							>
+								{isSubmitting ? "処理中..." : "全員削除"}
+							</button>
+						</Form>
+					</div>
+				</div>
 			</section>
 
 			{/* 参加者一覧 */}

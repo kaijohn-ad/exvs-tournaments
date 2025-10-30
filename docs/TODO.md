@@ -257,6 +257,30 @@
   - [x] Preview環境（`exvs-tournaments-dev`）がテスト環境として利用可能
   - [x] CI/CDでのPreview環境利用
 
+### 優先度高：データ整合性・履歴管理の改善
+- [ ] ペアの論理削除実装（統一ID保持のため）
+  - [ ] D1マイグレーション作成：`pairs`テーブルに`deleted_at TEXT`カラムを追加
+  - [ ] D1リポジトリ修正：`deletePair`を論理削除に変更（`deleted_at`を設定）
+  - [ ] D1リポジトリ修正：`listPairs`で`deleted_at IS NULL`のもののみ取得
+  - [ ] メモリリポジトリ修正：論理削除に対応（`deleted_at`フィールド追加）
+  - [ ] 外部キー参照の考慮：`bracket_matches`、`team_battle_slots`、`matches`などで削除済みペアが参照されないよう制約確認
+  - [ ] テスト更新：論理削除の動作確認テストを追加
+  - [ ] UI更新：削除済みペアが一覧に表示されないことを確認
+- [ ] プレイヤーの論理削除実装（統一ID保持とデータ整合性のため）
+  - [ ] D1マイグレーション作成：`players`テーブルに`deleted_at TEXT`カラムを追加
+  - [ ] D1リポジトリ修正：`deletePlayer`を論理削除に変更（`deleted_at`を設定）
+  - [ ] D1リポジトリ修正：`listPlayers`で`deleted_at IS NULL`のもののみ取得
+  - [ ] メモリリポジトリ修正：論理削除に対応（`deleted_at`フィールド追加）
+  - [ ] 外部キー参照の考慮：以下のテーブルで削除済みプレイヤーが参照されないよう確認
+    - `pairs`（`player1_id`, `player2_id` - 現在は`ON DELETE CASCADE`でペアが削除される）
+    - `team_members`（`player_id` - 現在は`ON DELETE CASCADE`でチームメンバーが削除される）
+    - `matches`（`side_a_player1_id`, `side_a_player2_id`, `side_b_player1_id`, `side_b_player2_id` - 現在は`ON DELETE SET NULL`）
+    - `match_participations`（`player_id` - 現在は`ON DELETE CASCADE`で参加記録が削除される）
+    - `player_stats`（`player_id` - 現在は`ON DELETE CASCADE`で統計が削除される）
+    - `tournament_participants`（`player_id` - 現在は`ON DELETE CASCADE`で参加者が削除される）
+  - [ ] テスト更新：論理削除の動作確認テストを追加
+  - [ ] UI更新：削除済みプレイヤーが一覧に表示されないことを確認
+
 ### 優先度高：トーナメントブラケット機能
 - [x] トーナメント参加者登録機能
   - [x] ペア登録機能（既存ペアから選択）
@@ -290,10 +314,25 @@
 - [x] 公開イベント一覧ページの実装
   - [x] `/events` でイベントカードを一覧表示（基本情報・開催日）
   - [x] 個別トーナメント公開ページへの導線を設置
-- [ ] イベント情報の表示改善
+- [x] イベント情報の表示改善
   - 参加者一覧
   - スケジュール表示
   - 結果サマリー
+
+### 優先度中：スケジュール表示の改善
+- [x] 未開始のブラケットマッチをスケジュールに表示する機能
+  - [x] スケジュール画面で`bracket_matches`テーブルから未開始（`status='pending'`）の試合も取得
+  - [x] `bracket_matches`の試合を`MatchRecord`形式に変換して表示
+  - [x] `matches`テーブルの試合と`bracket_matches`の未開始試合を統合して表示
+  - [x] 日時未設定の未開始試合も「日時未設定」として表示
+  - [x] BYEの表示対応（`isBracketMatch`フラグでBYE情報を保持）
+
+### 優先度中：UIテスト・E2Eテスト改善
+- [ ] コード側で`data-testid`属性を追加（ブラウザ自動化テストの安定化）
+  - [ ] フォーム要素に`data-testid`属性を追加（`select[name="pairId"]` → `data-testid="pair-select"`）
+  - [ ] ボタン要素に`data-testid`属性を追加（`button[type="submit"]` → `data-testid="add-pair-button"`）
+  - [ ] 主要なUI要素に`data-testid`属性を追加（ペア選択、参加者一覧、ブラケット表示など）
+  - [ ] JavaScriptの`evaluate`で`querySelector('[data-testid="..."]')`を使えるようにする
 
 ### 優先度低：本番環境セットアップ（手動作業）
 - [x] D1データベースの本番環境セットアップ
@@ -309,7 +348,7 @@
 - [ ] トーナメント機能拡張（本番セットアップ完了後）
   - ブラケットのシャッフル／固定切り替え
     - **シャッフル**: 参加チームを試合ごとに都度ランダムペアリング。
-      - EXVSゲーム内では、4人1グループで対戦し勝ち上がり2枠を決定するため、本システムではブラケットに4名を割り当て、その中で2名の勝ち上がりをttttttttttttttり当てることを行う。
+      - EXVSゲーム内では、4人1グループで対戦し勝ち上がり2枠を決定するため、本システムではブラケットに4名を割り当て、その中で2名の勝ち上がりを　次のブラケットにり割り当てることを行う。
     - **固定**: ブラケット生成時のチームを固定する。すでに実装済みのチームを設定してそのトーナメントを作成するもの。
   - シングル／ダブルエリミネーション形式の切り替え
   - 団体戦の勝ち抜き戦の追加と早稲田式との切り替え

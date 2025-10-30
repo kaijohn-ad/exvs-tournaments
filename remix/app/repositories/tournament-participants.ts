@@ -123,6 +123,18 @@ export const removeById = (tournamentId: string, participantId: string): void =>
 	tournamentStore.set(participantId, updated);
 };
 
+export const removeAll = (tournamentId: string): void => {
+	const tournamentStore = getTournamentStore(tournamentId);
+	for (const [id, record] of tournamentStore.entries()) {
+		if (record.status === 'active') {
+			tournamentStore.set(id, {
+				...record,
+				status: 'removed'
+			});
+		}
+	}
+};
+
 export const setSeed = (
 	tournamentId: string,
 	participantId: string,

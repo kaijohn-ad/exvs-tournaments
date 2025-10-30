@@ -219,6 +219,7 @@ export interface DatabaseContext {
 			opts?: { note?: string | null }
 		): Promise<tournamentParticipantsMemory.TournamentParticipantRecord>;
 		removeById(tournamentId: string, participantId: string): Promise<void>;
+		removeAll(tournamentId: string): Promise<void>;
 		setSeed(
 			tournamentId: string,
 			participantId: string,
@@ -521,6 +522,9 @@ const wrapMemoryTournamentParticipants = () => ({
 	},
 	async removeById(tournamentId: string, participantId: string) {
 		return tournamentParticipantsMemory.removeById(tournamentId, participantId);
+	},
+	async removeAll(tournamentId: string) {
+		return tournamentParticipantsMemory.removeAll(tournamentId);
 	},
 	async setSeed(tournamentId: string, participantId: string, seed: number | null) {
 		return tournamentParticipantsMemory.setSeed(tournamentId, participantId, seed);

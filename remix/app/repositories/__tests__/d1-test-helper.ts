@@ -455,6 +455,14 @@ async function executeSQL(sql: string, params: any[], tables: Map<string, Map<st
 			const [scope, scope_id, player_id, wins, losses, last_updated_at, id] = params;
 			const existing = table.get(id);
 			if (existing) table.set(id, { ...existing, scope, scope_id, player_id, wins, losses, last_updated_at });
+		} else if (tableName === 'tournament_participants' && /SET status = 'removed' WHERE tournament_id = \? AND status = 'active'/i.test(sql)) {
+			// removeAll用: すべてのactiveな参加者をremovedに
+			const [tournamentId] = params;
+			for (const [id, row] of Array.from(table.entries())) {
+				if (row.tournament_id === tournamentId && row.status === 'active') {
+					table.set(id, { ...row, status: 'removed' });
+				}
+			}
 		} else if (tableName === 'tournament_participants' && /SET status = 'removed' WHERE id = \? AND tournament_id = \? AND status = 'active'/i.test(sql)) {
 			const [id, tournamentId] = params;
 			const existing = table.get(id);
