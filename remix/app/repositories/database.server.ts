@@ -1,4 +1,6 @@
 import type { AppLoadContext } from "@remix-run/cloudflare";
+import { getStage } from "../utils/runtime.server";
+import { logDb } from "../utils/logger.server";
 import * as eventsMemory from "./events";
 import * as playersMemory from "./players";
 import * as tournamentsMemory from "./tournaments";
@@ -506,6 +508,10 @@ export function getDatabase(context: AppLoadContext, options: DatabaseOptions = 
 	const shouldUseMemory =
 		typeof options.useMemory === "boolean" ? options.useMemory : envPreference === "true";
 
+	const stage = getStage(context);
+	const db = context.db;
+	const hasDB = !!db && typeof db.prepare === "function";
+
 	// 本番環境では強制的にD1データベースを使用
 	if (process.env.NODE_ENV === 'production' && shouldUseMemory) {
 		console.warn("[database] Production environment detected but USE_MEMORY_STORE is true. This may cause data loss!");
@@ -513,13 +519,25 @@ export function getDatabase(context: AppLoadContext, options: DatabaseOptions = 
 
 	// 開発環境では常にメモリストアを使用
 	if (shouldUseMemory || process.env.NODE_ENV === 'development') {
-		console.log("[database] Using in-memory repositories");
+		logDb("db.selected", stage, {
+			driver: "memory",
+			fallback: false,
+			hasDB,
+			useMemory: true,
+		});
 		return createMemoryDatabase();
 	}
 
-	const db = context.db;
-
 	if (!db || typeof db.prepare !== "function") {
+		const fallback = process.env.NODE_ENV !== 'production';
+		
+		logDb("db.selected", stage, {
+			driver: "memory",
+			fallback,
+			hasDB: false,
+			useMemory: true,
+		});
+
 		console.error("[database] D1 binding unavailable; falling back to in-memory repositories", {
 			dbExists: !!db,
 			dbType: typeof db,
@@ -536,7 +554,13 @@ export function getDatabase(context: AppLoadContext, options: DatabaseOptions = 
 		return createMemoryDatabase();
 	}
 
-	console.log("[database] Using D1 database");
+	logDb("db.selected", stage, {
+		driver: "d1",
+		fallback: false,
+		hasDB: true,
+		useMemory: false,
+	});
+
 	return createD1Database(db);
 }
 

@@ -19,6 +19,9 @@
 	],
 	"env": {
 		"production": {
+			"vars": {
+				"ENVIRONMENT_STAGE": "production"
+			},
 			"d1_databases": [
 				{
 					"binding": "DB",
@@ -28,6 +31,9 @@
 			]
 		},
 		"preview": {
+			"vars": {
+				"ENVIRONMENT_STAGE": "preview"
+			},
 			"d1_databases": [
 				{
 					"binding": "DB",
