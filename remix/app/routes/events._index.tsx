@@ -1,5 +1,5 @@
 import { json, type LoaderFunctionArgs, type MetaFunction } from "@remix-run/cloudflare";
-import { useLoaderData } from "@remix-run/react";
+import { Link, useLoaderData } from "@remix-run/react";
 import { getDatabase } from "~/repositories/database.server";
 import type { EventRecord } from "~/repositories/events";
 import type { TournamentRecord } from "~/repositories/tournaments";
@@ -113,23 +113,23 @@ export default function EventsIndex() {
 											トーナメントがまだ登録されていません。
 										</p>
 									) : (
-										<ul className="grid gap-3">
-											{event.tournaments.map((tournament) => (
-												<li key={tournament.id}>
-													<a
-														href={buildTournamentUrl(event.id, tournament.id)}
-														className="flex justify-between items-center gap-3 px-4 py-3 rounded-xl border border-blue-200 bg-gradient-to-r from-blue-50 to-blue-100 text-slate-900 no-underline transition-all duration-150 hover:-translate-y-0.5 hover:shadow-lg hover:border-blue-400"
-													>
-														<span className="font-semibold text-base">
-															{tournament.name}
-														</span>
-														<span className="text-sm text-blue-700 font-semibold whitespace-nowrap">
-															{formatDate(tournament.createdAt)}
-														</span>
-													</a>
-												</li>
-											))}
-										</ul>
+									<ul className="grid gap-3">
+										{event.tournaments.map((tournament) => (
+											<li key={tournament.id}>
+												<Link
+													to={buildTournamentUrl(event.id, tournament.id)}
+													className="flex justify-between items-center gap-3 px-4 py-3 rounded-xl border border-blue-200 bg-gradient-to-r from-blue-50 to-blue-100 text-slate-900 no-underline transition-all duration-150 hover:-translate-y-0.5 hover:shadow-lg hover:border-blue-400"
+												>
+													<span className="font-semibold text-base">
+														{tournament.name}
+													</span>
+													<span className="text-sm text-blue-700 font-semibold whitespace-nowrap">
+														{formatDate(tournament.createdAt)}
+													</span>
+												</Link>
+											</li>
+										))}
+									</ul>
 									)}
 								</section>
 							</article>

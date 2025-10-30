@@ -31,13 +31,20 @@ export async function loader({ params, context }: LoaderFunctionArgs) {
 
 	let tournament: TournamentRecord;
 	try {
-		tournament = await db.tournaments.ensureTournament(tournamentId);
+		const existing = await db.tournaments.ensureTournament(tournamentId);
+		if (existing.eventId !== eventId) {
+			throw new Response("指定したトーナメントが見つかりません。", { status: 404 });
+		}
+		tournament = existing;
 	} catch (error) {
 		console.error("[public-tournament-bracket:load] tournament not found", {
 			eventId,
 			tournamentId,
 			error: error instanceof Error ? error.message : error,
 		});
+		if (error instanceof Response) {
+			throw error;
+		}
 		throw new Response("指定したトーナメントが見つかりません。", { status: 404 });
 	}
 
