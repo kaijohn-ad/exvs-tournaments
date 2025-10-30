@@ -20,6 +20,16 @@
 
 Cloudflare Pages では、Productionブランチへのデプロイは自動的にProduction環境に、それ以外のブランチはPreview環境にデプロイされます。
 
+### 環境ステージ識別（ENVIRONMENT_STAGE）
+
+本プロジェクトでは、データベース接続状況を環境別にログ出力するため、`ENVIRONMENT_STAGE` 環境変数を使用して環境を識別します。
+
+- **Production環境**: `ENVIRONMENT_STAGE = "production"`（`wrangler.toml`/`wrangler.json` の `[env.production.vars]` で設定）
+- **Preview環境**: `ENVIRONMENT_STAGE = "preview"`（`wrangler.toml`/`wrangler.json` の `[env.preview.vars]` で設定）
+- **開発環境**: `ENVIRONMENT_STAGE` が未設定の場合、`NODE_ENV` に基づいて自動判定（`NODE_ENV=production` なら `"production"`、それ以外は `"development"`）
+
+この環境変数は `wrangler.toml` と `wrangler.json` の両方に設定されており、Cloudflare Pages のデプロイ時に自動的に適用されます。データベース接続時には、この環境ステージ情報がJSONログとして出力され、接続状況の監視に使用されます。
+
 ## Production D1 Database Setup
 
 ### 1. Create Production Database
@@ -181,18 +191,48 @@ The project uses GitHub Actions for automated deployment:
   - Unit tests with `npm run test`
   - 手動実行可能（`workflow_dispatch`）
 
-- **Deploy Workflow** (`.github/workflows/deploy.yml`): Runs on master branch pushes
-  - Runs all CI checks
-  - Builds the application
-  - Deploys to Cloudflare Pages
+- **Deploy Workflow** (`.github/workflows/deploy.yml`): 
+  - **Production deployments**: Runs on `master` branch pushes
+    - Runs all CI checks (type check, tests)
+    - Builds the application
+    - Deploys to Cloudflare Pages Production environment
+    - Uses Production D1 database (`exvs-tournaments-db`)
+  - **Preview deployments**: Runs on Pull Requests (opened, synchronize, reopened)
+    - Runs all CI checks (type check, tests)
+    - Builds the application
+    - Deploys to Cloudflare Pages Preview environment
+    - Uses Preview D1 database (`exvs-tournaments-dev`)
+    - Automatically comments preview URL on the PR
   - 手動実行可能（`workflow_dispatch`）
+
+### PR Preview機能
+
+プルリクエストが作成・更新されると、自動的にプレビュー環境がデプロイされます：
+
+1. **自動デプロイ**: PRが作成・更新されると、ワークフローが自動実行されます
+2. **プレビューURL**: デプロイ完了後、プレビューURLがPRに自動コメントされます
+3. **環境分離**: プレビュー環境は開発用D1データベース（`exvs-tournaments-dev`）を使用します
+4. **並列実行制御**: 同じブランチでの同時実行は最新のもののみが実行され、古い実行は自動キャンセルされます
+
+プレビュー環境のURL形式は以下の通りです：
+```
+https://<branch-name>.exvs-tournaments.pages.dev
+```
 
 ### Required GitHub Secrets
 
 Configure these secrets in your GitHub repository settings:
 
-- `CLOUDFLARE_API_TOKEN`: API token with Pages and Workers permissions
+- `CLOUDFLARE_API_TOKEN`: API token with Pages and Workers permissions (プレビューURL取得のため、Pages読み取り権限が必要)
 - `CLOUDFLARE_ACCOUNT_ID`: Your Cloudflare account ID
+
+### Required GitHub Permissions
+
+デプロイワークフローは以下の権限を使用します：
+
+- `contents: read`: リポジトリの読み取り
+- `deployments: write`: GitHub Deployments APIへの書き込み
+- `pull-requests: write`: PRへのコメント投稿
 
 ## Rollback Procedure
 
