@@ -559,10 +559,10 @@ export default function TournamentsRoute() {
 					</p>
 				</div>
 				<Link
-					to={`/admin/events/${eventId}`}
+					to="/admin"
 					className="inline-flex items-center rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 transition hover:bg-blue-100"
 				>
-					← イベント詳細に戻る
+					← 管理トップに戻る
 				</Link>
 			</header>
 
