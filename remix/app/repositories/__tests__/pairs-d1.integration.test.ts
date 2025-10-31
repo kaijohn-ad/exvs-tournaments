@@ -110,7 +110,7 @@ describe("Pairs D1 Integration Tests", () => {
 		expect(foundPair!.seed).toBe(updateData.seed);
 	});
 
-	test("should delete pair", async () => {
+	test("should soft delete pair", async () => {
 		const database = getTestDatabaseContext();
 
 		const pairData = {
@@ -124,12 +124,15 @@ describe("Pairs D1 Integration Tests", () => {
 		const pairsBefore = await database.pairs.listPairs(eventId);
 		expect(pairsBefore).toHaveLength(1);
 
-		// ペアを削除
+		// ペアを論理削除
 		await database.pairs.deletePair(createdPair.id);
 
-		// ペアが削除されたことを確認
+		// ペアが一覧から消えることを確認
 		const pairsAfter = await database.pairs.listPairs(eventId);
 		expect(pairsAfter).toHaveLength(0);
+
+		// ensurePairでも見つからないことを確認
+		await expect(database.pairs.ensurePair(createdPair.id)).rejects.toThrow('Pair not found');
 	});
 
 	test("should handle multiple pairs", async () => {
@@ -226,5 +229,52 @@ describe("Pairs D1 Integration Tests", () => {
 		expect(pairs2[0].id).toBe(pair2.id);
 		expect(pairs2[0].player1_id).toBe(anotherPlayer1.id);
 		expect(pairs2[0].player2_id).toBe(anotherPlayer2.id);
+	});
+
+	test("should not list deleted pairs", async () => {
+		const database = getTestDatabaseContext();
+
+		const pair1 = await database.pairs.createPair(eventId, {
+			player1_id: player1Id,
+			player2_id: player2Id,
+			seed: 1
+		});
+
+		const pair2 = await database.pairs.createPair(eventId, {
+			player1_id: player2Id,
+			player2_id: player3Id,
+			seed: 2
+		});
+
+		// 2つのペアが存在することを確認
+		const pairsBefore = await database.pairs.listPairs(eventId);
+		expect(pairsBefore).toHaveLength(2);
+
+		// 1つ目のペアを論理削除
+		await database.pairs.deletePair(pair1.id);
+
+		// 2つ目のペアのみが残ることを確認
+		const pairsAfter = await database.pairs.listPairs(eventId);
+		expect(pairsAfter).toHaveLength(1);
+		expect(pairsAfter[0].id).toBe(pair2.id);
+	});
+
+	test("should not allow updating deleted pair", async () => {
+		const database = getTestDatabaseContext();
+
+		const pair = await database.pairs.createPair(eventId, {
+			player1_id: player1Id,
+			player2_id: player2Id
+		});
+
+		await database.pairs.deletePair(pair.id);
+
+		// 削除済みペアの更新はエラーになる
+		await expect(
+			database.pairs.updatePair(pair.id, {
+				player1_id: player1Id,
+				player2_id: player3Id
+			})
+		).rejects.toThrow('Pair not found');
 	});
 });

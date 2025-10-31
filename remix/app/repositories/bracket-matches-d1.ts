@@ -50,6 +50,38 @@ const mapRowToRecord = (row: any): BracketMatchRecord => ({
 	created_at: row.created_at
 });
 
+const validatePairForBracketMatch = async (
+	db: D1Database,
+	tournamentId: string,
+	pairId: string | null
+): Promise<void> => {
+	if (!pairId) {
+		return;
+	}
+
+	// Check that pair exists and is not deleted
+	const pair = await db
+		.prepare('SELECT id FROM pairs WHERE id = ? AND deleted_at IS NULL')
+		.bind(pairId)
+		.first<{ id: string }>();
+
+	if (!pair) {
+		throw new Error('ペアが見つかりません。');
+	}
+
+	// Check that pair is registered as an active participant in this tournament
+	const participant = await db
+		.prepare(
+			'SELECT id FROM tournament_participants WHERE tournament_id = ? AND pair_id = ? AND status = \'active\''
+		)
+		.bind(tournamentId, pairId)
+		.first<{ id: string }>();
+
+	if (!participant) {
+		throw new Error('このペアはトーナメントの参加者として登録されていません。');
+	}
+};
+
 export const createBracketMatchesRepositoryD1 = (db: D1Database) => {
 	return {
         async createBracketMatch(
@@ -61,6 +93,15 @@ export const createBracketMatchesRepositoryD1 = (db: D1Database) => {
             const round = sanitizeRound((data as any).round);
             const position = sanitizeRound((data as any).position);
             const status = (data as any).status ?? 'pending';
+
+            // Validate pair participants
+            const participantAType = (data as any).participant_a_type;
+            const participantAPairId = participantAType === 'pair' ? (data as any).participant_a_pair_id ?? null : null;
+            const participantBType = (data as any).participant_b_type;
+            const participantBPairId = participantBType === 'pair' ? (data as any).participant_b_pair_id ?? null : null;
+
+            await validatePairForBracketMatch(db, tournamentId, participantAPairId);
+            await validatePairForBracketMatch(db, tournamentId, participantBPairId);
 
             await db
                 .prepare(
@@ -166,6 +207,10 @@ export const createBracketMatchesRepositoryD1 = (db: D1Database) => {
 				participantBPairIdRaw
 			);
 
+			// Validate pair participants
+			await validatePairForBracketMatch(db, tournamentId, participantAPairId);
+			await validatePairForBracketMatch(db, tournamentId, participantBPairId);
+
 			const scoreA = hasKey(data, 'score_a') ? data.score_a ?? null : existing.score_a;
 			const scoreB = hasKey(data, 'score_b') ? data.score_b ?? null : existing.score_b;
 			const winnerSide = hasKey(data, 'winner_side')
@@ -233,6 +278,12 @@ export const createBracketMatchesRepositoryD1 = (db: D1Database) => {
 				const scoreA = match.score_a ?? null;
 				const scoreB = match.score_b ?? null;
 				const winnerSide = match.winner_side ?? null;
+
+				// Validate pair participants
+				const participantAPairId = match.participant_a_type === 'pair' ? match.participant_a_pair_id ?? null : null;
+				const participantBPairId = match.participant_b_type === 'pair' ? match.participant_b_pair_id ?? null : null;
+				await validatePairForBracketMatch(db, tournamentId, participantAPairId);
+				await validatePairForBracketMatch(db, tournamentId, participantBPairId);
 
 				await db
 					.prepare(

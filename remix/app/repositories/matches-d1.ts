@@ -1,6 +1,64 @@
 import { generateUUID } from "~/utils/uuid";
 import type { MatchData, MatchImportData, MatchRecord } from './matches';
 
+const validatePairForMatch = async (
+	db: D1Database,
+	context: string,
+	contextId: string,
+	pairId: string | null | undefined
+): Promise<void> => {
+	if (!pairId) {
+		return;
+	}
+
+	// Check that pair exists and is not deleted
+	const pair = await db
+		.prepare('SELECT event_id FROM pairs WHERE id = ? AND deleted_at IS NULL')
+		.bind(pairId)
+		.first<{ event_id: string }>();
+
+	if (!pair) {
+		throw new Error('ペアが見つかりません。');
+	}
+
+	if (context === 'bracket') {
+		// For bracket matches, pair must be registered as an active participant
+		const tournament = await db
+			.prepare('SELECT id FROM tournaments WHERE id = ?')
+			.bind(contextId)
+			.first<{ id: string }>();
+
+		if (!tournament) {
+			throw new Error('トーナメントが見つかりません。');
+		}
+
+		const participant = await db
+			.prepare(
+				'SELECT id FROM tournament_participants WHERE tournament_id = ? AND pair_id = ? AND status = \'active\''
+			)
+			.bind(contextId, pairId)
+			.first<{ id: string }>();
+
+		if (!participant) {
+			throw new Error('このペアはトーナメントの参加者として登録されていません。');
+		}
+	} else if (context === 'teamBattle') {
+		// For team battle matches, pair must belong to the same event
+		const teamBattle = await db
+			.prepare('SELECT event_id FROM team_battles WHERE id = ?')
+			.bind(contextId)
+			.first<{ event_id: string }>();
+
+		if (!teamBattle) {
+			throw new Error('チームバトルが見つかりません。');
+		}
+
+		if (pair.event_id !== teamBattle.event_id) {
+			throw new Error('ペアは同じイベントに属している必要があります。');
+		}
+	}
+};
+
 export const createMatchesRepositoryD1 = (db: D1Database) => {
 	return {
 	async listMatches(contextType?: string, contextId?: string): Promise<MatchRecord[]> {
@@ -31,6 +89,14 @@ export const createMatchesRepositoryD1 = (db: D1Database) => {
 	},
 
 	async createMatch(data: MatchData): Promise<MatchRecord> {
+		// Validate pair participants
+		if (data.side_a_type === 'pair') {
+			await validatePairForMatch(db, data.context, data.context_id, data.side_a_pair_id);
+		}
+		if (data.side_b_type === 'pair') {
+			await validatePairForMatch(db, data.context, data.context_id, data.side_b_pair_id);
+		}
+
 		const id = generateUUID();
 		const now = new Date().toISOString();
 		const status = data.status ?? 'completed';
@@ -106,6 +172,19 @@ export const createMatchesRepositoryD1 = (db: D1Database) => {
 	async updateMatch(matchId: string, data: MatchData): Promise<MatchRecord> {
 		const existing = await this.ensureMatch(matchId);
 
+		// Validate pair participants
+		const sideAType = data.side_a_type ?? existing.side_a_type;
+		const sideAPairId = sideAType === 'pair' ? (data.side_a_pair_id ?? existing.side_a_pair_id) : null;
+		const sideBType = data.side_b_type ?? existing.side_b_type;
+		const sideBPairId = sideBType === 'pair' ? (data.side_b_pair_id ?? existing.side_b_pair_id) : null;
+
+		if (sideAType === 'pair' && sideAPairId) {
+			await validatePairForMatch(db, data.context ?? existing.context, data.context_id ?? existing.context_id, sideAPairId);
+		}
+		if (sideBType === 'pair' && sideBPairId) {
+			await validatePairForMatch(db, data.context ?? existing.context, data.context_id ?? existing.context_id, sideBPairId);
+		}
+
 		const status = data.status ?? existing.status;
 		const played_at = data.played_at ?? existing.played_at;
 		const slot_index = data.slot_index ?? existing.slot_index ?? null;
@@ -175,6 +254,14 @@ export const createMatchesRepositoryD1 = (db: D1Database) => {
 			for (const match of matches) {
 				if (!match.context || !match.context_id) {
 					continue;
+				}
+
+				// Validate pair participants
+				if (match.side_a_type === 'pair') {
+					await validatePairForMatch(db, match.context, match.context_id, match.side_a_pair_id);
+				}
+				if (match.side_b_type === 'pair') {
+					await validatePairForMatch(db, match.context, match.context_id, match.side_b_pair_id);
 				}
 
 			const id = match.id ?? generateUUID();

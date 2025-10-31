@@ -323,6 +323,10 @@ npx wrangler d1 migrations apply exvs-tournaments-dev --remote --env preview
 2. **環境別マイグレーション適用順序**:
    - ローカル開発環境 → Preview環境 → Production環境
 
+### 最近のマイグレーション
+
+- **0003_add_deleted_at_to_pairs.sql**: `pairs`テーブルに`deleted_at`カラムを追加し、ペアの論理削除を実装。削除済みペアは一覧に表示されず、参照も制限されます。
+
 ## Monitoring and Logs
 
 ### View Production Logs

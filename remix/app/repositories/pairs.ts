@@ -17,6 +17,7 @@ export interface PairRecord {
 	player2_id: string;
 	seed: number | null;
 	created_at: string;
+	deleted_at?: string | null;
 }
 
 const store = new Map<string, Map<string, PairRecord>>();
@@ -33,7 +34,7 @@ const getEventStore = (eventId: string) => {
 };
 
 export const listPairs = (eventId: string): PairRecord[] => {
-	return Array.from(getEventStore(eventId).values());
+	return Array.from(getEventStore(eventId).values()).filter(pair => !pair.deleted_at);
 };
 
 export const createPair = (eventId: string, data: PairData): PairRecord => {
@@ -55,7 +56,7 @@ export const createPair = (eventId: string, data: PairData): PairRecord => {
 export const ensurePair = (eventId: string, pairId: string): PairRecord => {
 	const pair = getEventStore(eventId).get(pairId);
 
-	if (!pair) {
+	if (!pair || pair.deleted_at) {
 		throw new Error('Pair not found');
 	}
 
@@ -77,11 +78,14 @@ export const updatePair = (eventId: string, pairId: string, data: PairData): Pai
 };
 
 export const deletePair = (eventId: string, pairId: string): void => {
-	const didDelete = getEventStore(eventId).delete(pairId);
+	const pair = getEventStore(eventId).get(pairId);
 
-	if (!didDelete) {
+	if (!pair || pair.deleted_at) {
 		throw new Error('Pair not found');
 	}
+
+	pair.deleted_at = new Date().toISOString();
+	getEventStore(eventId).set(pairId, pair);
 };
 
 export const setPairs = (eventId: string, pairs: PairImportData[]): PairRecord[] => {
@@ -123,7 +127,7 @@ const findPairById = (pairId: string) => {
 
 export const getPairById = (pairId: string): PairRecord => {
 	const found = findPairById(pairId);
-	if (!found) {
+	if (!found || found.record.deleted_at) {
 		throw new Error('Pair not found');
 	}
 	return found.record;
@@ -147,10 +151,11 @@ export const updatePairById = (pairId: string, data: PairData): PairRecord => {
 
 export const deletePairById = (pairId: string): void => {
 	const found = findPairById(pairId);
-	if (!found) {
+	if (!found || found.record.deleted_at) {
 		throw new Error('Pair not found');
 	}
-	store.get(found.eventId)!.delete(pairId);
+	found.record.deleted_at = new Date().toISOString();
+	store.get(found.eventId)!.set(pairId, found.record);
 };
 
 export const __resetForTests = () => {

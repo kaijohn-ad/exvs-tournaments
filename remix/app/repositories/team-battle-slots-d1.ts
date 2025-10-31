@@ -5,6 +5,40 @@ import type {
 	TeamBattleSlotRecord
 } from './team-battle-slots';
 
+const validatePairForTeamBattleSlot = async (
+	db: D1Database,
+	teamBattleId: string,
+	pairId: string | null | undefined
+): Promise<void> => {
+	if (!pairId) {
+		return;
+	}
+
+	// Get team battle event_id
+	const teamBattle = await db
+		.prepare('SELECT event_id FROM team_battles WHERE id = ?')
+		.bind(teamBattleId)
+		.first<{ event_id: string }>();
+
+	if (!teamBattle) {
+		throw new Error('チームバトルが見つかりません。');
+	}
+
+	// Check that pair exists, is not deleted, and belongs to the same event
+	const pair = await db
+		.prepare('SELECT event_id FROM pairs WHERE id = ? AND deleted_at IS NULL')
+		.bind(pairId)
+		.first<{ event_id: string }>();
+
+	if (!pair) {
+		throw new Error('ペアが見つかりません。');
+	}
+
+	if (pair.event_id !== teamBattle.event_id) {
+		throw new Error('ペアは同じイベントに属している必要があります。');
+	}
+};
+
 export const createTeamBattleSlotsRepositoryD1 = (db: D1Database) => {
 	const listTeamBattleSlots = async (battleId: string): Promise<TeamBattleSlotRecord[]> => {
 		const result = await db
@@ -38,6 +72,11 @@ export const createTeamBattleSlotsRepositoryD1 = (db: D1Database) => {
 	};
 
 	const createTeamBattleSlot = async (data: TeamBattleSlotData): Promise<TeamBattleSlotRecord> => {
+		// Validate pair if assignment_type is 'pair'
+		if (data.assignment_type === 'pair') {
+			await validatePairForTeamBattleSlot(db, data.team_battle_id, data.pair_id);
+		}
+
 		const id = generateUUID();
 
 		await db
@@ -115,6 +154,11 @@ export const createTeamBattleSlotsRepositoryD1 = (db: D1Database) => {
 	): Promise<TeamBattleSlotRecord> => {
 		await ensureTeamBattleSlot(battleId, slotId);
 
+		// Validate pair if assignment_type is 'pair'
+		if (data.assignment_type === 'pair') {
+			await validatePairForTeamBattleSlot(db, battleId, data.pair_id);
+		}
+
 		await db
 			.prepare(
 				`UPDATE team_battle_slots
@@ -151,6 +195,11 @@ export const createTeamBattleSlotsRepositoryD1 = (db: D1Database) => {
 		data: TeamBattleSlotData
 	): Promise<TeamBattleSlotRecord> => {
 		await ensureSlot(slotId);
+
+		// Validate pair if assignment_type is 'pair'
+		if (data.assignment_type === 'pair') {
+			await validatePairForTeamBattleSlot(db, data.team_battle_id, data.pair_id);
+		}
 
 		await db
 			.prepare(
@@ -214,6 +263,11 @@ export const createTeamBattleSlotsRepositoryD1 = (db: D1Database) => {
 		for (const slot of slots) {
 			if (!slot.team_id || slot.slot_index === undefined) {
 				continue;
+			}
+
+			// Validate pair if assignment_type is 'pair'
+			if (slot.assignment_type === 'pair') {
+				await validatePairForTeamBattleSlot(db, battleId, slot.pair_id);
 			}
 
 			const id = slot.id ?? generateUUID();

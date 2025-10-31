@@ -73,12 +73,20 @@ function createMockD1Database() {
 						if (sql.includes('slug = ?') && boundParams.length > 0) {
 							return row.slug === boundParams[0];
 						}
-						if (sql.includes('event_id = ?') && boundParams.length > 0) {
-							return row.event_id === boundParams[0];
+					if (sql.includes('event_id = ?') && boundParams.length > 0) {
+						let result = row.event_id === boundParams[0];
+						if (sql.includes('AND deleted_at IS NULL')) {
+							result = result && (row.deleted_at === null || row.deleted_at === undefined);
 						}
+						return result;
+					}
 					if (/\bid\s*=\s*\?/i.test(sql) && boundParams.length > 0) {
-						return row.id === boundParams[0];
+						let result = row.id === boundParams[0];
+						if (sql.includes('AND deleted_at IS NULL')) {
+							result = result && (row.deleted_at === null || row.deleted_at === undefined);
 						}
+						return result;
+					}
 						if (sql.includes('context = ?') && boundParams.length > 0) {
 							return row.context === boundParams[0] && (!sql.includes('AND context_id = ?') || row.context_id === boundParams[1]);
 						}
@@ -124,6 +132,14 @@ function createMockD1Database() {
 				// ORDER BY handling
 				if (/ORDER BY name COLLATE NOCASE/i.test(sql)) {
 					results.sort((a, b) => String(a.name).localeCompare(String(b.name), 'ja', { sensitivity: 'base' }));
+				}
+				if (/ORDER BY seed ASC, id ASC/i.test(sql)) {
+					results.sort((a, b) => {
+						const as = a.seed ?? Number.MAX_SAFE_INTEGER;
+						const bs = b.seed ?? Number.MAX_SAFE_INTEGER;
+						if (as !== bs) return as - bs;
+						return String(a.id).localeCompare(String(b.id));
+					});
 				}
 				if (/ORDER BY seed ASC/i.test(sql)) {
 					results.sort((a, b) => (a.seed ?? Number.MAX_SAFE_INTEGER) - (b.seed ?? Number.MAX_SAFE_INTEGER) || String(a.id).localeCompare(String(b.id)));
@@ -174,7 +190,28 @@ function createMockD1Database() {
 			};
 			const makeRun = async () => {
 				await executeSQL(sql, boundParams, tables);
-				return { success: true, meta: { duration: 0, changes: 1 } } as const;
+				let changes = 0;
+				if (sql.toUpperCase().includes('UPDATE')) {
+					const tableName = extractTableName(sql);
+					if (tableName === 'pairs' && /SET deleted_at = \? WHERE id = \? AND deleted_at IS NULL/i.test(sql)) {
+						const [deletedAt, id] = boundParams;
+						const table = tables.get(tableName);
+						if (table) {
+							const existing = table.get(id);
+							// executeSQL実行後の状態を確認
+							if (existing && existing.deleted_at === deletedAt) {
+								changes = 1;
+							}
+						}
+					} else {
+						changes = 1; // 他のUPDATEはとりあえず1を返す
+					}
+				} else if (sql.toUpperCase().includes('DELETE FROM')) {
+					changes = 1;
+				} else if (sql.toUpperCase().includes('INSERT INTO')) {
+					changes = 1;
+				}
+				return { success: true, meta: { duration: 0, changes } } as const;
 			};
 			return {
 				bind: (...params: any[]) => {
@@ -236,7 +273,7 @@ async function executeSQL(sql: string, params: any[], tables: Map<string, Map<st
 			if (!playersTable || !playersTable.has(params[2]) || !playersTable.has(params[3])) {
 				throw new Error('FK violation: player not found');
 			}
-			table.set(id, { id, event_id: params[1] || '', player1_id: params[2] || '', player2_id: params[3] || '', seed: params[4] ?? null, created_at: now });
+			table.set(id, { id, event_id: params[1] || '', player1_id: params[2] || '', player2_id: params[3] || '', seed: params[4] ?? null, created_at: now, deleted_at: null });
 		} else if (tableName === 'tournaments') {
 			const events = tables.get('events');
 			if (!events || !events.has(params[1])) throw new Error('FK violation: event not found');
@@ -383,6 +420,12 @@ async function executeSQL(sql: string, params: any[], tables: Map<string, Map<st
 			const [name, note, id] = params;
 			const existing = table.get(id);
 			if (existing) table.set(id, { ...existing, name, note });
+		} else if (tableName === 'pairs' && /SET deleted_at = \? WHERE id = \? AND deleted_at IS NULL/i.test(sql)) {
+			const [deletedAt, id] = params;
+			const existing = table.get(id);
+			if (existing && !existing.deleted_at) {
+				table.set(id, { ...existing, deleted_at: deletedAt });
+			}
 		} else if (tableName === 'pairs' && /SET player1_id = \?, player2_id = \?, seed = \? WHERE id = \? AND event_id = \?/i.test(sql)) {
 			const [p1, p2, seed, id, eventId] = params;
 			const existing = table.get(id);
@@ -534,6 +577,7 @@ async function initializeTestSchema(db: D1Database) {
 			player2_id TEXT NOT NULL,
 			seed INTEGER,
 			created_at TEXT NOT NULL DEFAULT (datetime('now')),
+			deleted_at TEXT,
 			FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE,
 			FOREIGN KEY (player1_id) REFERENCES players(id) ON DELETE CASCADE,
 			FOREIGN KEY (player2_id) REFERENCES players(id) ON DELETE CASCADE

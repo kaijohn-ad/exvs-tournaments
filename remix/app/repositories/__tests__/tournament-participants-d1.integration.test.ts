@@ -303,5 +303,42 @@ describe("Tournament Participants D1 Integration Tests", () => {
 		participants = await database.tournamentParticipants.listParticipants(soloTournament.id);
 		expect(participants).toHaveLength(0);
 	});
+
+	test("should reject adding deleted pair to tournament", async () => {
+		const database = getTestDatabaseContext();
+
+		// ペアを作成して削除
+		const pair = await database.pairs.createPair(eventId, {
+			player1_id: player1Id,
+			player2_id: player2Id
+		});
+		await database.pairs.deletePair(pair.id);
+
+		// 削除済みペアを追加しようとするとエラーになる
+		await expect(
+			database.tournamentParticipants.addPair(tournamentId, pair.id)
+		).rejects.toThrow('ペアが見つかりません。');
+	});
+
+	test("should reject adding pair from different event", async () => {
+		const database = getTestDatabaseContext();
+
+		// 別のイベントとペアを作成
+		const anotherEvent = await database.events.createEvent({
+			name: "Another Event",
+			slug: "another-event"
+		});
+		const anotherPlayer1 = await database.players.createPlayer(anotherEvent.id, { name: "Another Player 1" });
+		const anotherPlayer2 = await database.players.createPlayer(anotherEvent.id, { name: "Another Player 2" });
+		const anotherPair = await database.pairs.createPair(anotherEvent.id, {
+			player1_id: anotherPlayer1.id,
+			player2_id: anotherPlayer2.id
+		});
+
+		// 別イベントのペアを追加しようとするとエラーになる
+		await expect(
+			database.tournamentParticipants.addPair(tournamentId, anotherPair.id)
+		).rejects.toThrow('ペアは同じイベントに属している必要があります。');
+	});
 });
 

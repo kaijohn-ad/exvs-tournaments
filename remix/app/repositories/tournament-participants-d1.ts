@@ -98,7 +98,7 @@ export const createTournamentParticipantsRepositoryD1 = (db: D1Database) => {
 			}
 
 			const pair = await db
-				.prepare('SELECT event_id FROM pairs WHERE id = ?')
+				.prepare('SELECT event_id FROM pairs WHERE id = ? AND deleted_at IS NULL')
 				.bind(pairId)
 				.first<{ event_id: string }>();
 

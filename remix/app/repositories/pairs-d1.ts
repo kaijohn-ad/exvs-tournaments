@@ -5,7 +5,7 @@ export const createPairsRepositoryD1 = (db: D1Database) => {
 	return {
 		async listPairs(eventId: string): Promise<PairRecord[]> {
 			const result = await db
-				.prepare('SELECT id, event_id, player1_id, player2_id, seed, created_at FROM pairs WHERE event_id = ? ORDER BY seed ASC, id ASC')
+				.prepare('SELECT id, event_id, player1_id, player2_id, seed, created_at FROM pairs WHERE event_id = ? AND deleted_at IS NULL ORDER BY seed ASC, id ASC')
 				.bind(eventId)
 				.all<any>();
 
@@ -43,7 +43,7 @@ export const createPairsRepositoryD1 = (db: D1Database) => {
 
 	async ensurePair(pairId: string): Promise<PairRecord> {
 			const result = await db
-				.prepare('SELECT id, event_id, player1_id, player2_id, seed, created_at FROM pairs WHERE id = ?')
+				.prepare('SELECT id, event_id, player1_id, player2_id, seed, created_at FROM pairs WHERE id = ? AND deleted_at IS NULL')
 				.bind(pairId)
 				.first<any>();
 
@@ -84,9 +84,10 @@ export const createPairsRepositoryD1 = (db: D1Database) => {
 		},
 
 	async deletePair(pairId: string): Promise<void> {
+			const deletedAt = new Date().toISOString();
 			const result = await db
-				.prepare('DELETE FROM pairs WHERE id = ?')
-				.bind(pairId)
+				.prepare('UPDATE pairs SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL')
+				.bind(deletedAt, pairId)
 				.run();
 
 			if (result.meta.changes === 0) {
