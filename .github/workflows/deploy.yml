@@ -53,7 +53,7 @@ jobs:
       working-directory: ./remix
       env:
         CI: true
-      run: npm run test -- --run
+      run: npm run test
 
     - name: Build Remix app
       working-directory: ./remix
