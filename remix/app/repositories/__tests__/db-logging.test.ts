@@ -78,8 +78,8 @@ describe("DB logging", () => {
 				expect(parsed.event).toBe("db.env");
 				expect(parsed.stage).toBe("preview");
 				expect(parsed.hasDB).toBe(true);
-				// Preview環境ではデフォルトでメモリストアを使用（USE_MEMORY_STORE=falseで無効化可能）
-				expect(parsed.useMemory).toBe(true);
+				// Preview環境でもDBがあれば既定でD1を使用
+				expect(parsed.useMemory).toBe(false);
 			}
 		});
 

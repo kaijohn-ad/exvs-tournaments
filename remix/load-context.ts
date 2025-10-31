@@ -37,16 +37,14 @@ export function getLoadContext({ context }: GetLoadContextArgs): RemixAppLoadCon
 	const stage = getStage(tempContext);
 	const hasDB = !!cloudflare.env.DB;
 
-	// 開発環境ではメモリストアを使用
-	// プレビュー環境では強制的にメモリストアを使用（USE_MEMORY_STORE=falseで明示的に無効化可能）
-	// 本番環境ではD1データベースが必須
-	// 明示的にUSE_MEMORY_STORE=falseが設定されている場合はそれを尊重
+	// データソース選択方針
+	// - 本番: D1必須
+	// - プレビュー/開発: DBバインディングがあればD1を既定で使用
+	//   （メモリストアは明示的に USE_MEMORY_STORE=true を指定、またはDB未接続時のみ）
 	const explicitMemoryStore = process.env.USE_MEMORY_STORE;
 	const useMemoryStore =
 		explicitMemoryStore === 'true' ||
-		(explicitMemoryStore !== 'false' && stage === 'preview') ||
-		!hasDB ||
-		(stage === 'development' && !hasDB);
+		!hasDB;
 
 	// db.env ログを出力
 	logDb("db.env", stage, {

@@ -30,6 +30,13 @@ Cloudflare Pages では、Productionブランチへのデプロイは自動的�
 
 この環境変数は `wrangler.toml` と `wrangler.json` の両方に設定されており、Cloudflare Pages のデプロイ時に自動的に適用されます。データベース接続時には、この環境ステージ情報がJSONログとして出力され、接続状況の監視に使用されます。
 
+### データソース選択（Preview/開発）
+
+- 本番環境では常に D1 を使用します（必須）。
+- Preview/開発環境では、D1 バインディングが存在する場合は既定で D1 を使用します。
+- メモリストアを明示的に使用したい場合は、`USE_MEMORY_STORE=true` を設定してください。
+- D1 バインディングが存在しない場合は自動的にメモリストアへフォールバックします。
+
 ## Production D1 Database Setup
 
 ### 1. Create Production Database
