@@ -527,6 +527,85 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 		}
 
 		const seedingMode = tournament.seedingMode ?? 'random';
+		
+		// FFA 2-up形式の処理
+		if (tournament.format === 'ffa-2up') {
+			if (tournament.entryMode !== 'solo') {
+				const tournaments = await db.tournaments.listTournaments(eventId);
+				const sortedTournaments = [...tournaments].sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+				return json<ActionData>(
+					{
+						type: "error",
+						source: "generate",
+						message: "FFA 2-up形式は個別参加モード（solo）でのみ利用できます。",
+						tournaments: sortedTournaments,
+						tournamentsJson: JSON.stringify(sortedTournaments, null, 2),
+						tournamentId
+					},
+					{ status: 400 }
+				);
+			}
+
+			// Solo参加者を取得
+			const participants = await db.tournamentParticipants.listParticipants(tournamentId);
+			const soloParticipants = participants.filter(p => p.participant_type === 'solo' && p.player_id);
+
+			if (soloParticipants.length % 4 !== 0) {
+				const tournaments = await db.tournaments.listTournaments(eventId);
+				const sortedTournaments = [...tournaments].sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+				return json<ActionData>(
+					{
+						type: "error",
+						source: "generate",
+						message: `FFA 2-up形式では参加者数が4の倍数である必要があります。現在の参加者数: ${soloParticipants.length}`,
+						tournaments: sortedTournaments,
+						tournamentsJson: JSON.stringify(sortedTournaments, null, 2),
+						tournamentId
+					},
+					{ status: 400 }
+				);
+			}
+
+			try {
+				const { generateAndStoreFfa2UpBracket } = await import('~/repositories/ffa-generator');
+				await generateAndStoreFfa2UpBracket({
+					tournamentId,
+					players: soloParticipants,
+					seedingMode,
+					setGroups: (targetTournamentId, groups) =>
+						db.ffaGroups.setFfaGroups(targetTournamentId, groups)
+				});
+
+				const tournaments = await db.tournaments.listTournaments(eventId);
+				const sortedTournaments = [...tournaments].sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+				const tournamentsJson = JSON.stringify(sortedTournaments, null, 2);
+
+				return json<ActionData>({
+					type: "success",
+					source: "generate",
+					message: `トーナメント「${tournament.name}」のFFA 2-upブラケットを生成しました。`,
+					tournaments: sortedTournaments,
+					tournamentsJson,
+					tournamentId
+				});
+			} catch (error) {
+				const tournaments = await db.tournaments.listTournaments(eventId);
+				const sortedTournaments = [...tournaments].sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+				return json<ActionData>(
+					{
+						type: "error",
+						source: "generate",
+						message: error instanceof Error ? error.message : "FFA 2-upブラケット生成に失敗しました。",
+						tournaments: sortedTournaments,
+						tournamentsJson: JSON.stringify(sortedTournaments, null, 2),
+						tournamentId
+					},
+					{ status: 400 }
+				);
+			}
+		}
+
+		// シングルエリミネーション形式の処理
 		if (tournament.format && tournament.format !== 'single-elimination') {
 			const tournaments = await db.tournaments.listTournaments(eventId);
 			const sortedTournaments = [...tournaments].sort((a, b) => a.name.localeCompare(b.name, 'ja'));
@@ -534,7 +613,7 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 				{
 					type: "error",
 					source: "generate",
-					message: "ブラケット生成はシングルエリミネーション形式でのみ利用できます。",
+					message: "ブラケット生成はシングルエリミネーション形式またはFFA 2-up形式でのみ利用できます。",
 					tournaments: sortedTournaments,
 					tournamentsJson: JSON.stringify(sortedTournaments, null, 2),
 					tournamentId
@@ -795,6 +874,7 @@ export default function TournamentsRoute() {
 											className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
 										>
 											<option value="single-elimination">シングルエリミネーション</option>
+											<option value="ffa-2up">FFA 2-up（4人1グループ→上位2名）</option>
 										</select>
 									</div>
 
@@ -878,14 +958,30 @@ export default function TournamentsRoute() {
 
 									{(() => {
 										const isSoloMode = tournament.entryMode === 'solo';
+										const isFfa2Up = tournament.format === 'ffa-2up';
 										const participantCount = participantCounts[tournament.id] ?? 0;
-										const canGenerateBracket = isSoloMode
-											? participantCount >= 2 && participantCount % 2 === 0
-											: participantCount >= 2 && participantCount % 2 === 0;
+										
+										let canGenerateBracket: boolean;
+										if (isFfa2Up) {
+											canGenerateBracket = isSoloMode && participantCount >= 4 && participantCount % 4 === 0;
+										} else {
+											canGenerateBracket = isSoloMode
+												? participantCount >= 2 && participantCount % 2 === 0
+												: participantCount >= 2 && participantCount % 2 === 0;
+										}
+										
 										const isDisabled = isSubmitting || !canGenerateBracket;
 										
 										let disabledTitle: string | undefined;
-										if (isSoloMode) {
+										if (isFfa2Up) {
+											if (!isSoloMode) {
+												disabledTitle = 'FFA 2-up形式は個別参加モード（solo）でのみ利用できます';
+											} else if (participantCount < 4) {
+												disabledTitle = 'FFA 2-up形式では少なくとも4名の参加者が必要です';
+											} else if (participantCount % 4 !== 0) {
+												disabledTitle = `FFA 2-up形式では参加者数が4の倍数である必要があります。現在の参加者数: ${participantCount}`;
+											}
+										} else if (isSoloMode) {
 											if (participantCount < 2) {
 												disabledTitle = 'ブラケット生成には少なくとも2名の参加者が必要です';
 											} else if (participantCount % 2 !== 0) {

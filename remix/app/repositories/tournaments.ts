@@ -2,7 +2,7 @@ import { generateUUID } from "~/utils/uuid";
 
 export interface TournamentData {
 	name: string;
-	format?: 'single-elimination';
+	format?: 'single-elimination' | 'ffa-2up';
 	seedingMode?: 'random' | 'manual';
 	entryMode?: 'pair' | 'solo';
 }

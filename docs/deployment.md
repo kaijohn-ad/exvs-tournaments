@@ -326,6 +326,7 @@ npx wrangler d1 migrations apply exvs-tournaments-dev --remote --env preview
 ### 最近のマイグレーション
 
 - **0003_add_deleted_at_to_pairs.sql**: `pairs`テーブルに`deleted_at`カラムを追加し、ペアの論理削除を実装。削除済みペアは一覧に表示されず、参照も制限されます。
+- **0005_add_ffa_groups.sql**: FFA 2-up形式のトーナメントをサポートするため、`ffa_groups`テーブルを追加し、`tournaments`テーブルの`format`カラムに`'ffa-2up'`オプションを追加。4人1グループで上位2名が勝ち上がる形式をサポートします。
 
 ## Monitoring and Logs
 

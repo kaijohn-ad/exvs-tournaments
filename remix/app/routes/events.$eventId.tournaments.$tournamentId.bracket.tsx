@@ -7,6 +7,7 @@ import type { EventRecord } from "~/repositories/events";
 import type { PairRecord } from "~/repositories/pairs";
 import type { PlayerRecord } from "~/repositories/players";
 import type { BracketMatchRecord } from "~/repositories/bracket-matches";
+import type { FfaGroupRecord } from "~/repositories/ffa-groups";
 
 type LoaderData = {
 	eventId: string;
@@ -16,6 +17,7 @@ type LoaderData = {
 	pairs: PairRecord[];
 	players: PlayerRecord[];
 	bracketMatches: BracketMatchRecord[];
+	ffaGroups: FfaGroupRecord[];
 	loadedAt: string;
 };
 
@@ -59,10 +61,11 @@ export async function loader({ params, context }: LoaderFunctionArgs) {
 		throw new Response("指定したイベントが見つかりません。", { status: 404 });
 	}
 
-	const [pairs, players, bracketMatches] = await Promise.all([
+	const [pairs, players, bracketMatches, ffaGroups] = await Promise.all([
 		db.pairs.listPairs(eventId),
 		db.players.listPlayers(eventId),
 		db.bracketMatches.listBracketMatches(tournamentId),
+		db.ffaGroups.listFfaGroups(tournamentId),
 	]);
 
 	return json<LoaderData>({
@@ -73,6 +76,7 @@ export async function loader({ params, context }: LoaderFunctionArgs) {
 		pairs,
 		players,
 		bracketMatches,
+		ffaGroups,
 		loadedAt: new Date().toISOString(),
 	});
 }
@@ -116,8 +120,25 @@ interface RoundDisplay {
 	gapFactor: number;
 }
 
+interface FfaGroupDisplay {
+	id: string;
+	round: number;
+	position: number;
+	participants: Array<{
+		playerId: string | null;
+		playerName: string;
+		type: 'player' | 'bye' | 'empty';
+	}>;
+	winners: Array<string | null>;
+	status: string;
+	isCompleted: boolean;
+	isPending: boolean;
+	statusLabel: string;
+	statusClass: string;
+}
+
 export default function PublicBracketRoute() {
-	const { eventId, tournamentId, event, tournament, pairs, players, bracketMatches, loadedAt } =
+	const { eventId, tournamentId, event, tournament, pairs, players, bracketMatches, ffaGroups, loadedAt } =
 		useLoaderData<typeof loader>();
 	const revalidator = useRevalidator();
 
@@ -306,7 +327,95 @@ export default function PublicBracketRoute() {
 		});
 	}, [matchDisplays, roundNumbers]);
 
-	// 進行状況の計算
+	// FFA形式のグループ表示処理
+	const toFfaGroupDisplay = (group: FfaGroupRecord): FfaGroupDisplay => {
+		const participants = [
+			{
+				playerId: group.participant_1_player_id,
+				playerName: getPlayerName(group.participant_1_player_id),
+				type: group.participant_1_type,
+			},
+			{
+				playerId: group.participant_2_player_id,
+				playerName: getPlayerName(group.participant_2_player_id),
+				type: group.participant_2_type,
+			},
+			{
+				playerId: group.participant_3_player_id,
+				playerName: getPlayerName(group.participant_3_player_id),
+				type: group.participant_3_type,
+			},
+			{
+				playerId: group.participant_4_player_id,
+				playerName: getPlayerName(group.participant_4_player_id),
+				type: group.participant_4_type,
+			},
+		];
+
+		const isCompleted = group.status === 'completed' || Boolean(group.winner1_player_id && group.winner2_player_id);
+		const isPending = group.status === 'pending' && !isCompleted;
+
+		return {
+			id: group.id,
+			round: group.round,
+			position: group.position,
+			participants,
+			winners: [group.winner1_player_id, group.winner2_player_id],
+			status: group.status,
+			isCompleted,
+			isPending,
+			statusLabel: isCompleted ? '完了' : isPending ? '未開始' : '進行中',
+			statusClass: isCompleted ? 'status-completed' : isPending ? 'status-pending' : 'status-in-progress',
+		};
+	};
+
+	const ffaGroupDisplays = useMemo(() => {
+		return ffaGroups.map(toFfaGroupDisplay);
+	}, [ffaGroups, playerNameById]);
+
+	const ffaRoundNumbers = useMemo(() => {
+		const rounds = new Set(ffaGroupDisplays.map((g) => g.round));
+		return Array.from(rounds).sort((a, b) => a - b);
+	}, [ffaGroupDisplays]);
+
+	const ffaRounds = useMemo(() => {
+		return ffaRoundNumbers.map((roundNumber) => {
+			const roundGroups = ffaGroupDisplays.filter((g) => g.round === roundNumber);
+			const totalRounds = ffaRoundNumbers.length;
+			const gapFactor = Math.pow(2, totalRounds - roundNumber - 1);
+
+			let roundName: string;
+			if (roundNumber === 1) {
+				roundName = "1回戦";
+			} else if (roundNumber === totalRounds) {
+				roundName = "決勝";
+			} else if (roundNumber === totalRounds - 1) {
+				roundName = "準決勝";
+			} else if (roundNumber === totalRounds - 2) {
+				roundName = "準々決勝";
+			} else {
+				roundName = `${roundNumber}回戦`;
+			}
+
+			return {
+				round: roundNumber,
+				name: roundName,
+				groups: roundGroups,
+				gapFactor,
+			};
+		});
+	}, [ffaGroupDisplays, ffaRoundNumbers]);
+
+	// 進行状況の計算（FFA形式）
+	const totalFfaGroups = ffaGroupDisplays.length;
+	const completedFfaGroups = ffaGroupDisplays.filter((g) => g.isCompleted).length;
+	const pendingFfaGroups = ffaGroupDisplays.filter((g) => g.isPending).length;
+	const progressFfaPercent = totalFfaGroups > 0 ? (completedFfaGroups / totalFfaGroups) * 100 : 0;
+
+	const activeFfaRound = ffaRounds.find((r) => r.groups.some((g) => g.isPending));
+	const activeFfaRoundName = activeFfaRound?.name ?? "完了";
+
+	// 進行状況の計算（シングルエリミネーション）
 	const totalMatches = matchDisplays.length;
 	const completedMatches = matchDisplays.filter((m) => m.isCompleted).length;
 	const inProgressMatches = matchDisplays.filter((m) => m.isInProgress).length;
@@ -315,6 +424,8 @@ export default function PublicBracketRoute() {
 
 	const activeRound = rounds.find((r) => r.matches.some((m) => m.isInProgress || m.isPending));
 	const activeRoundName = activeRound?.name ?? "完了";
+
+	const isFfaFormat = tournament.format === 'ffa-2up';
 
 	return (
 		<div className="mx-auto flex w-full max-w-7xl flex-col gap-8 px-6 py-10">
@@ -340,48 +451,86 @@ export default function PublicBracketRoute() {
 				<header className="mb-6 flex items-center justify-between">
 					<h2 className="text-xl font-semibold text-slate-900">進行状況</h2>
 					<span className="rounded-full bg-blue-100 px-3 py-1 text-sm font-medium text-blue-800">
-						現在: {activeRoundName}
+						現在: {isFfaFormat ? activeFfaRoundName : activeRoundName}
 					</span>
 				</header>
 
-				{totalMatches === 0 ? (
-					<p className="text-slate-500">
-						ブラケットがまだ生成されていません。
-					</p>
-				) : (
-					<>
-						<div className="mb-6">
-							<div className="h-2 w-full rounded-full bg-slate-200">
-								<div
-									className="h-2 rounded-full bg-blue-600 transition-all duration-300"
-									style={{ width: `${progressPercent}%` }}
-								></div>
-							</div>
-						</div>
-
-						<div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-							<div className="text-center">
-								<div className="text-2xl font-bold text-slate-900">{totalMatches}</div>
-								<div className="text-sm text-slate-600">合計</div>
-							</div>
-							<div className="text-center">
-								<div className="text-2xl font-bold text-green-600">{completedMatches}</div>
-								<div className="text-sm text-slate-600">完了</div>
-							</div>
-							<div className="text-center">
-								<div className="text-2xl font-bold text-blue-600">{inProgressMatches}</div>
-								<div className="text-sm text-slate-600">進行中</div>
-							</div>
-							<div className="text-center">
-								<div className="text-2xl font-bold text-slate-400">{pendingMatches}</div>
-								<div className="text-sm text-slate-600">未開始</div>
-							</div>
-						</div>
-
-						<p className="mt-4 text-center text-sm text-slate-600">
-							全{totalMatches}試合中{completedMatches}試合が完了しています。
+				{isFfaFormat ? (
+					totalFfaGroups === 0 ? (
+						<p className="text-slate-500">
+							ブラケットがまだ生成されていません。
 						</p>
-					</>
+					) : (
+						<>
+							<div className="mb-6">
+								<div className="h-2 w-full rounded-full bg-slate-200">
+									<div
+										className="h-2 rounded-full bg-blue-600 transition-all duration-300"
+										style={{ width: `${progressFfaPercent}%` }}
+									></div>
+								</div>
+							</div>
+
+							<div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+								<div className="text-center">
+									<div className="text-2xl font-bold text-slate-900">{totalFfaGroups}</div>
+									<div className="text-sm text-slate-600">合計グループ</div>
+								</div>
+								<div className="text-center">
+									<div className="text-2xl font-bold text-green-600">{completedFfaGroups}</div>
+									<div className="text-sm text-slate-600">完了</div>
+								</div>
+								<div className="text-center">
+									<div className="text-2xl font-bold text-slate-400">{pendingFfaGroups}</div>
+									<div className="text-sm text-slate-600">未開始</div>
+								</div>
+							</div>
+
+							<p className="mt-4 text-center text-sm text-slate-600">
+								全{totalFfaGroups}グループ中{completedFfaGroups}グループが完了しています。
+							</p>
+						</>
+					)
+				) : (
+					totalMatches === 0 ? (
+						<p className="text-slate-500">
+							ブラケットがまだ生成されていません。
+						</p>
+					) : (
+						<>
+							<div className="mb-6">
+								<div className="h-2 w-full rounded-full bg-slate-200">
+									<div
+										className="h-2 rounded-full bg-blue-600 transition-all duration-300"
+										style={{ width: `${progressPercent}%` }}
+									></div>
+								</div>
+							</div>
+
+							<div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+								<div className="text-center">
+									<div className="text-2xl font-bold text-slate-900">{totalMatches}</div>
+									<div className="text-sm text-slate-600">合計</div>
+								</div>
+								<div className="text-center">
+									<div className="text-2xl font-bold text-green-600">{completedMatches}</div>
+									<div className="text-sm text-slate-600">完了</div>
+								</div>
+								<div className="text-center">
+									<div className="text-2xl font-bold text-blue-600">{inProgressMatches}</div>
+									<div className="text-sm text-slate-600">進行中</div>
+								</div>
+								<div className="text-center">
+									<div className="text-2xl font-bold text-slate-400">{pendingMatches}</div>
+									<div className="text-sm text-slate-600">未開始</div>
+								</div>
+							</div>
+
+							<p className="mt-4 text-center text-sm text-slate-600">
+								全{totalMatches}試合中{completedMatches}試合が完了しています。
+							</p>
+						</>
+					)
 				)}
 			</section>
 
@@ -392,11 +541,104 @@ export default function PublicBracketRoute() {
 					<p className="mt-1 text-sm text-slate-600">横スクロールで全ラウンドを表示できます。</p>
 				</header>
 
-				{rounds.length === 0 ? (
-					<p className="text-slate-500">表示できるブラケットがありません。</p>
+				{isFfaFormat ? (
+					ffaRounds.length === 0 ? (
+						<p className="text-slate-500">表示できるブラケットがありません。</p>
+					) : (
+						<div className="overflow-x-auto">
+							<div className="flex min-w-max gap-8">
+								{ffaRounds.map((round) => (
+									<section
+										key={round.round}
+										data-testid={`round-${round.round}`}
+										className="flex min-w-[320px] flex-col"
+										style={{ gap: `${round.gapFactor * 8}px` }}
+									>
+										<header className="mb-4 text-center">
+											<h3 className="text-lg font-semibold text-slate-900">{round.name}</h3>
+											<span className="text-sm text-slate-500">R{round.round}</span>
+										</header>
+
+										{round.groups.length === 0 ? (
+											<p className="text-center text-sm text-slate-500">グループが設定されていません。</p>
+										) : (
+											<div className="space-y-4">
+												{round.groups.map((group) => (
+													<article
+														key={group.id}
+														data-testid={`group-${group.id}`}
+														className={`rounded-lg border p-4 transition-all ${
+															group.isCompleted
+																? "border-green-200 bg-green-50"
+																: group.isPending
+																? "border-slate-200 bg-white"
+																: "border-blue-200 bg-blue-50"
+														}`}
+													>
+														<header className="mb-3 flex items-center justify-between">
+															<span className="text-xs font-medium text-slate-500">
+																#{group.position}
+															</span>
+															<span
+																className={`rounded-full px-2 py-1 text-xs font-medium ${
+																	group.statusClass === "status-completed"
+																		? "bg-green-100 text-green-800"
+																		: group.statusClass === "status-in-progress"
+																		? "bg-blue-100 text-blue-800"
+																		: "bg-slate-100 text-slate-800"
+																}`}
+															>
+																{group.statusLabel}
+															</span>
+														</header>
+
+														<div className="space-y-2">
+															{group.participants.map((participant, index) => {
+																const isWinner = group.winners.includes(participant.playerId);
+																return (
+																	<div
+																		key={index}
+																		className={`flex items-center justify-between rounded p-2 ${
+																			group.isCompleted && isWinner
+																				? "bg-green-100"
+																				: group.isCompleted && !isWinner
+																				? "bg-red-50"
+																				: "bg-slate-50"
+																		}`}
+																	>
+																		<div className="flex-1">
+																			{participant.type === "player" ? (
+																				<div className="font-medium text-slate-900">
+																					{participant.playerName}
+																					{isWinner && group.isCompleted && (
+																						<span className="ml-2 text-xs text-green-600">✓ 勝ち上がり</span>
+																					)}
+																				</div>
+																			) : (
+																				<span className="text-slate-500">
+																					{participant.type === "bye" ? "BYE" : "未確定"}
+																				</span>
+																			)}
+																		</div>
+																	</div>
+																);
+															})}
+														</div>
+													</article>
+												))}
+											</div>
+										)}
+									</section>
+								))}
+							</div>
+						</div>
+					)
 				) : (
-					<div className="overflow-x-auto">
-						<div className="flex min-w-max gap-8">
+					rounds.length === 0 ? (
+						<p className="text-slate-500">表示できるブラケットがありません。</p>
+					) : (
+						<div className="overflow-x-auto">
+							<div className="flex min-w-max gap-8">
 							{rounds.map((round) => (
 								<section
 									key={round.round}
@@ -519,8 +761,9 @@ export default function PublicBracketRoute() {
 									)}
 								</section>
 							))}
+							</div>
 						</div>
-					</div>
+					)
 				)}
 			</section>
 		</div>

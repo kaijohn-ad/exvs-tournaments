@@ -10,6 +10,7 @@ import * as teamBattlesMemory from "./team-battles";
 import * as teamBattleSlotsMemory from "./team-battle-slots";
 import * as matchesMemory from "./matches";
 import * as bracketMatchesMemory from "./bracket-matches";
+import * as ffaGroupsMemory from "./ffa-groups";
 import * as playerStatsMemory from "./player-stats";
 import * as tournamentParticipantsMemory from "./tournament-participants";
 import { createEventsRepositoryD1 } from "./events-d1";
@@ -21,6 +22,7 @@ import { createTeamBattlesRepositoryD1 } from "./team-battles-d1";
 import { createTeamBattleSlotsRepositoryD1 } from "./team-battle-slots-d1";
 import { createMatchesRepositoryD1 } from "./matches-d1";
 import { createBracketMatchesRepositoryD1 } from "./bracket-matches-d1";
+import { createFfaGroupsRepositoryD1 } from "./ffa-groups-d1";
 import { createPlayerStatsRepositoryD1 } from "./player-stats-d1";
 import { createTournamentParticipantsRepositoryD1 } from "./tournament-participants-d1";
 
@@ -31,6 +33,7 @@ export interface DatabaseContext {
 		ensureEvent(eventId: string): Promise<eventsMemory.EventRecord>;
 		updateEvent(eventId: string, data: eventsMemory.EventData): Promise<eventsMemory.EventRecord>;
 		deleteEvent(eventId: string): Promise<void>;
+		findEventBySlug(slug: string): Promise<eventsMemory.EventRecord | null>;
 	};
 	players: {
 		listPlayers(eventId: string): Promise<playersMemory.PlayerRecord[]>;
@@ -122,6 +125,27 @@ export interface DatabaseContext {
 			matches: bracketMatchesMemory.BracketMatchImportData[]
 		): Promise<bracketMatchesMemory.BracketMatchRecord[]>;
 		deleteBracketMatches(tournamentId: string): Promise<void>;
+	};
+	ffaGroups: {
+		listFfaGroups(tournamentId: string): Promise<ffaGroupsMemory.FfaGroupRecord[]>;
+		createFfaGroup(
+			tournamentId: string,
+			data: ffaGroupsMemory.FfaGroupImportData
+		): Promise<ffaGroupsMemory.FfaGroupRecord>;
+		ensureFfaGroup(
+			tournamentId: string,
+			groupId: string
+		): Promise<ffaGroupsMemory.FfaGroupRecord>;
+		updateFfaGroup(
+			tournamentId: string,
+			groupId: string,
+			data: ffaGroupsMemory.FfaGroupUpdateData
+		): Promise<ffaGroupsMemory.FfaGroupRecord>;
+		setFfaGroups(
+			tournamentId: string,
+			groups: ffaGroupsMemory.FfaGroupImportData[]
+		): Promise<ffaGroupsMemory.FfaGroupRecord[]>;
+		clearFfaGroups(tournamentId: string): Promise<void>;
 	};
 	teamBattleSlots: {
 		listTeamBattleSlots(battleId: string): Promise<teamBattleSlotsMemory.TeamBattleSlotRecord[]>;
@@ -256,6 +280,9 @@ const wrapMemoryEvents = () => ({
 	},
 	async deleteEvent(eventId: string) {
 		return eventsMemory.deleteEvent(eventId);
+	},
+	async findEventBySlug(slug: string) {
+		return Promise.resolve(eventsMemory.findEventBySlug(slug));
 	},
 });
 
@@ -396,6 +423,37 @@ const wrapMemoryBracketMatches = () => ({
 	},
 	async deleteBracketMatches(tournamentId: string) {
 		return bracketMatchesMemory.deleteBracketMatches(tournamentId);
+	},
+});
+
+const wrapMemoryFfaGroups = () => ({
+	async listFfaGroups(tournamentId: string) {
+		return ffaGroupsMemory.listFfaGroups(tournamentId);
+	},
+	async createFfaGroup(
+		tournamentId: string,
+		data: ffaGroupsMemory.FfaGroupImportData,
+	) {
+		return ffaGroupsMemory.createFfaGroup(tournamentId, data);
+	},
+	async ensureFfaGroup(tournamentId: string, groupId: string) {
+		return ffaGroupsMemory.ensureFfaGroup(tournamentId, groupId);
+	},
+	async updateFfaGroup(
+		tournamentId: string,
+		groupId: string,
+		data: ffaGroupsMemory.FfaGroupUpdateData,
+	) {
+		return ffaGroupsMemory.updateFfaGroup(tournamentId, groupId, data);
+	},
+	async setFfaGroups(
+		tournamentId: string,
+		groups: ffaGroupsMemory.FfaGroupImportData[],
+	) {
+		return ffaGroupsMemory.setFfaGroups(tournamentId, groups);
+	},
+	async clearFfaGroups(tournamentId: string) {
+		return ffaGroupsMemory.clearFfaGroups(tournamentId);
 	},
 });
 
@@ -545,6 +603,7 @@ const createMemoryDatabase = (): DatabaseContext => ({
 	teams: wrapMemoryTeams(),
 	teamBattles: wrapMemoryTeamBattles(),
 	bracketMatches: wrapMemoryBracketMatches(),
+	ffaGroups: wrapMemoryFfaGroups(),
 	teamBattleSlots: wrapMemoryTeamBattleSlots(),
 	matches: wrapMemoryMatches(),
 	playerStats: wrapMemoryPlayerStats(),
@@ -561,6 +620,7 @@ const createD1Database = (db: D1Database): DatabaseContext => ({
 	},
 	teamBattles: createTeamBattlesRepositoryD1(db),
 	bracketMatches: createBracketMatchesRepositoryD1(db),
+	ffaGroups: createFfaGroupsRepositoryD1(db),
 	teamBattleSlots: createTeamBattleSlotsRepositoryD1(db),
 	matches: createMatchesRepositoryD1(db),
 	playerStats: createPlayerStatsRepositoryD1(db),
@@ -636,6 +696,7 @@ export function resetRepositoriesForTests() {
 	teamsMemory.__resetForTests?.();
 	teamBattlesMemory.__resetForTests?.();
 	bracketMatchesMemory.__resetForTests?.();
+	ffaGroupsMemory.__resetForTests?.();
 	teamBattleSlotsMemory.__resetForTests?.();
 	matchesMemory.__resetForTests?.();
 	playerStatsMemory.__resetForTests?.();

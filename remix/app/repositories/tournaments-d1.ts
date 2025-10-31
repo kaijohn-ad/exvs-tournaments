@@ -32,7 +32,7 @@ export const createTournamentsRepositoryD1 = (db: D1Database) => {
 					id: row.id,
 					eventId: row.event_id,
 					name: row.name,
-					format: row.format as 'single-elimination',
+					format: row.format as 'single-elimination' | 'ffa-2up',
 					seedingMode: row.seeding_mode as 'random' | 'manual',
 					entryMode: (row.entry_mode || 'pair') as 'pair' | 'solo',
 					createdAt: row.created_at
@@ -90,7 +90,7 @@ export const createTournamentsRepositoryD1 = (db: D1Database) => {
 				id: result.id,
 				eventId: result.event_id,
 				name: result.name,
-				format: result.format as 'single-elimination',
+				format: result.format as 'single-elimination' | 'ffa-2up',
 				seedingMode: result.seeding_mode as 'random' | 'manual',
 				entryMode: (result.entry_mode || 'pair') as 'pair' | 'solo',
 				createdAt: result.created_at

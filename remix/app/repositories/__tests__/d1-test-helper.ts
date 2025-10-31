@@ -80,7 +80,8 @@ function createMockD1Database() {
 						}
 						return result;
 					}
-					if (/\bid\s*=\s*\?/i.test(sql) && boundParams.length > 0) {
+					// id = ? のパターン（tournament_id = ? などと一緒に使われない場合のみ）
+					if (/\bid\s*=\s*\?/i.test(sql) && !sql.includes('tournament_id = ?') && boundParams.length > 0) {
 						let result = row.id === boundParams[0];
 						if (sql.includes('AND deleted_at IS NULL')) {
 							result = result && (row.deleted_at === null || row.deleted_at === undefined);
@@ -100,6 +101,9 @@ function createMockD1Database() {
 							}
 							if (sql.includes('AND player_id = ?') && boundParams.length > 1) {
 								result = result && row.player_id === boundParams[1];
+							}
+							if (sql.includes('AND id = ?') && boundParams.length > 1) {
+								result = result && row.id === boundParams[1];
 							}
 							return result;
 						}
@@ -162,7 +166,10 @@ function createMockD1Database() {
 					results.sort((a, b) => (b.wins - a.wins) || (a.losses - b.losses));
 				}
 				if (/ORDER BY round ASC, position ASC/i.test(sql)) {
-					results.sort((a, b) => (a.round - b.round) || (a.position - b.position));
+					results.sort((a, b) => {
+						if (a.round !== b.round) return a.round - b.round;
+						return a.position - b.position;
+					});
 				}
 				if (/ORDER BY played_at DESC/i.test(sql)) {
 					results.sort((a, b) => String(b.played_at).localeCompare(String(a.played_at)));
@@ -341,6 +348,29 @@ async function executeSQL(sql: string, params: any[], tables: Map<string, Map<st
 				status: params[11] || 'pending',
 				created_at: params[12] ?? now
 			});
+		} else if (tableName === 'ffa_groups') {
+			// INSERT INTO ffa_groups (id, tournament_id, round, position, participant_1_type, participant_1_player_id, participant_2_type, participant_2_player_id, participant_3_type, participant_3_player_id, participant_4_type, participant_4_player_id, status, winner1_player_id, winner2_player_id, created_at)
+			// VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			const tournaments = tables.get('tournaments');
+			if (!tournaments || !tournaments.has(params[1])) throw new Error('FK violation: tournament not found');
+			table.set(id, {
+				id,
+				tournament_id: params[1] || '',
+				round: params[2] ?? 1,
+				position: params[3] ?? 1,
+				participant_1_type: params[4] || 'empty',
+				participant_1_player_id: params[5] ?? null,
+				participant_2_type: params[6] || 'empty',
+				participant_2_player_id: params[7] ?? null,
+				participant_3_type: params[8] || 'empty',
+				participant_3_player_id: params[9] ?? null,
+				participant_4_type: params[10] || 'empty',
+				participant_4_player_id: params[11] ?? null,
+				status: params[12] || 'pending',
+				winner1_player_id: params[13] ?? null,
+				winner2_player_id: params[14] ?? null,
+				created_at: params[15] ?? now
+			});
 		} else if (tableName === 'matches') {
 			const pairsTable = tables.get('pairs');
 			if (params[4] === 'pair' && params[5] && (!pairsTable || !pairsTable.has(params[5]))) {
@@ -506,6 +536,28 @@ async function executeSQL(sql: string, params: any[], tables: Map<string, Map<st
 					status
 				});
 			}
+		} else if (tableName === 'ffa_groups' && /SET round = \?, position = \?, participant_1_type = \?, participant_1_player_id = \?,/i.test(sql)) {
+			// UPDATE ffa_groups SET round = ?, position = ?, participant_1_type = ?, participant_1_player_id = ?, participant_2_type = ?, participant_2_player_id = ?, participant_3_type = ?, participant_3_player_id = ?, participant_4_type = ?, participant_4_player_id = ?, status = ?, winner1_player_id = ?, winner2_player_id = ? WHERE tournament_id = ? AND id = ?
+			const [round, position, participant_1_type, participant_1_player_id, participant_2_type, participant_2_player_id, participant_3_type, participant_3_player_id, participant_4_type, participant_4_player_id, status, winner1_player_id, winner2_player_id, tournament_id, id] = params;
+			const existing = table.get(id);
+			if (existing && existing.tournament_id === tournament_id) {
+				table.set(id, {
+					...existing,
+					round,
+					position,
+					participant_1_type,
+					participant_1_player_id,
+					participant_2_type,
+					participant_2_player_id,
+					participant_3_type,
+					participant_3_player_id,
+					participant_4_type,
+					participant_4_player_id,
+					status,
+					winner1_player_id,
+					winner2_player_id
+				});
+			}
 		} else if (tableName === 'matches' && /SET context = \?, context_id = \?, slot_index = \?, side_a_type = \?,/i.test(sql)) {
 			const [context, context_id, slot_index, side_a_type, side_a_pair_id, side_a_player1_id, side_a_player2_id, side_b_type, side_b_pair_id, side_b_player1_id, side_b_player2_id, score_a, score_b, winner_side, status, played_at, id] = params;
 			const existing = table.get(id);
@@ -606,7 +658,7 @@ async function initializeTestSchema(db: D1Database) {
 			id TEXT PRIMARY KEY,
 			event_id TEXT NOT NULL,
 			name TEXT NOT NULL,
-			format TEXT NOT NULL DEFAULT 'single-elimination',
+			format TEXT NOT NULL DEFAULT 'single-elimination' CHECK(format IN ('single-elimination', 'ffa-2up')),
 			seeding_mode TEXT NOT NULL DEFAULT 'random',
 			entry_mode TEXT NOT NULL DEFAULT 'pair' CHECK(entry_mode IN ('pair','solo')),
 			created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -728,6 +780,33 @@ async function initializeTestSchema(db: D1Database) {
 			FOREIGN KEY (tournament_id) REFERENCES tournaments(id) ON DELETE CASCADE,
 			FOREIGN KEY (participant_a_pair_id) REFERENCES pairs(id) ON DELETE SET NULL,
 			FOREIGN KEY (participant_b_pair_id) REFERENCES pairs(id) ON DELETE SET NULL,
+			UNIQUE(tournament_id, round, position)
+		);
+
+		CREATE TABLE IF NOT EXISTS ffa_groups (
+			id TEXT PRIMARY KEY,
+			tournament_id TEXT NOT NULL,
+			round INTEGER NOT NULL,
+			position INTEGER NOT NULL,
+			participant_1_type TEXT CHECK(participant_1_type IN ('player', 'bye', 'empty')),
+			participant_1_player_id TEXT,
+			participant_2_type TEXT CHECK(participant_2_type IN ('player', 'bye', 'empty')),
+			participant_2_player_id TEXT,
+			participant_3_type TEXT CHECK(participant_3_type IN ('player', 'bye', 'empty')),
+			participant_3_player_id TEXT,
+			participant_4_type TEXT CHECK(participant_4_type IN ('player', 'bye', 'empty')),
+			participant_4_player_id TEXT,
+			status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'in_progress', 'completed')),
+			winner1_player_id TEXT,
+			winner2_player_id TEXT,
+			created_at TEXT NOT NULL DEFAULT (datetime('now')),
+			FOREIGN KEY (tournament_id) REFERENCES tournaments(id) ON DELETE CASCADE,
+			FOREIGN KEY (participant_1_player_id) REFERENCES players(id) ON DELETE SET NULL,
+			FOREIGN KEY (participant_2_player_id) REFERENCES players(id) ON DELETE SET NULL,
+			FOREIGN KEY (participant_3_player_id) REFERENCES players(id) ON DELETE SET NULL,
+			FOREIGN KEY (participant_4_player_id) REFERENCES players(id) ON DELETE SET NULL,
+			FOREIGN KEY (winner1_player_id) REFERENCES players(id) ON DELETE SET NULL,
+			FOREIGN KEY (winner2_player_id) REFERENCES players(id) ON DELETE SET NULL,
 			UNIQUE(tournament_id, round, position)
 		);
 

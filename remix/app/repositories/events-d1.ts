@@ -136,6 +136,29 @@ export const createEventsRepositoryD1 = (db: D1Database) => {
 			if (result.meta.changes === 0) {
 				throw new Error('Event not found');
 			}
+		},
+
+		async findEventBySlug(slug: string): Promise<EventRecord | null> {
+			const normalizedSlug = normalizeText(slug).toLowerCase();
+			if (!normalizedSlug) {
+				return null;
+			}
+
+			const result = await db
+				.prepare('SELECT id, name, slug, created_at FROM events WHERE LOWER(slug) = ?')
+				.bind(normalizedSlug)
+				.first<{ id: string; name: string; slug: string | null; created_at: string }>();
+
+			if (!result) {
+				return null;
+			}
+
+			return {
+				id: result.id,
+				name: result.name,
+				slug: result.slug ?? null,
+				createdAt: result.created_at
+			};
 		}
 	};
 };
