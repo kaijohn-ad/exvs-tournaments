@@ -16,10 +16,10 @@
   - 乱数スラッグURLで閲覧（読み取り専用）
 
 ## ルーティング（例）
-- /events
+- /events （公開イベント一覧、トーナメント・団体戦リスト）
 - /events/:eventId/dashboard
-- /events/:eventId/tournaments/:id/bracket
-- /events/:eventId/team-battles/:id
+- /events/:eventId/tournaments/:id/bracket （公開ブラケット表示）
+- /events/:eventId/team-battles/:battleId/board （公開団体戦ボード表示）
 - /admin/events/:eventId/entries  （Basic認証）
 - /admin/events/:eventId/settings （Basic認証）
 
@@ -30,7 +30,8 @@
 ## データ同期
 - API: REST/JSON（Functions）
 - 更新: 5秒ポーリング（後日SSE/WSに拡張）
-- 公開ブラケットビュー: 自動更新ON/OFF切替と手動リフレッシュボタンを提供
+- 公開ブラケットビュー: 自動更新（5秒間隔）でリアルタイム進行状況を表示
+- 公開団体戦ボード: 自動更新（5秒間隔）でスコア・ラインナップ・試合結果を表示
 - 入力途中はlocalStorageにドラフト保存
 
 ## トーナメント（シングルエリミ）
