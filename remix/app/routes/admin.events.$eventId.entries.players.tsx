@@ -623,12 +623,18 @@ export function ErrorBoundary() {
 				: String(error);
 
 	// 開発環境またはプレビュー環境では詳細を表示
+	// サーバーサイドとクライアントサイドの両方で動作するように判定を改善
+	// プレビュー環境（develop.exvs-tournaments.pages.devなど）では常に詳細を表示
 	const isDevelopment =
-		typeof window !== "undefined" &&
-		(window.location.hostname === "localhost" ||
-			window.location.hostname.includes("127.0.0.1") ||
-			window.location.hostname.includes("dev") ||
-			window.location.hostname.includes("preview"));
+		(typeof window !== "undefined" &&
+			(window.location.hostname === "localhost" ||
+				window.location.hostname.includes("127.0.0.1") ||
+				window.location.hostname.includes("dev") ||
+				window.location.hostname.includes("preview") ||
+				window.location.hostname.includes("pages.dev"))) ||
+		(typeof process !== "undefined" &&
+			(process.env.NODE_ENV === "development" ||
+				process.env.ENVIRONMENT_STAGE === "preview"));
 
 	return (
 		<div className="mx-auto max-w-2xl px-6 py-12">
