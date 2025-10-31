@@ -15,6 +15,7 @@ export interface PlayerRecord {
 	name: string;
 	note: string | null;
 	created_at: string;
+	deleted_at: string | null;
 }
 
 const store = new Map<string, Map<string, PlayerRecord>>();
@@ -31,7 +32,7 @@ const getEventStore = (eventId: string) => {
 };
 
 export const listPlayers = (eventId: string): PlayerRecord[] => {
-	return Array.from(getEventStore(eventId).values());
+	return Array.from(getEventStore(eventId).values()).filter((p) => p.deleted_at == null);
 };
 
 export const createPlayer = (eventId: string, data: PlayerData): PlayerRecord => {
@@ -41,7 +42,8 @@ export const createPlayer = (eventId: string, data: PlayerData): PlayerRecord =>
 		event_id: eventId,
 		name: data.name.trim(),
 		note: data.note?.trim() ?? null,
-		created_at: now
+		created_at: now,
+		deleted_at: null
 	};
 
 	getEventStore(eventId).set(record.id, record);
@@ -53,6 +55,10 @@ export const ensurePlayer = (eventId: string, playerId: string): PlayerRecord =>
 	const player = getEventStore(eventId).get(playerId);
 
 	if (!player) {
+		throw new Error('Player not found');
+	}
+
+	if (player.deleted_at != null) {
 		throw new Error('Player not found');
 	}
 
@@ -73,11 +79,15 @@ export const updatePlayer = (eventId: string, playerId: string, data: PlayerData
 };
 
 export const deletePlayer = (eventId: string, playerId: string): void => {
-	const didDelete = getEventStore(eventId).delete(playerId);
-
-	if (!didDelete) {
+	const storeForEvent = getEventStore(eventId);
+	const record = storeForEvent.get(playerId);
+	if (!record) {
 		throw new Error('Player not found');
 	}
+	if (record.deleted_at != null) {
+		throw new Error('Player not found');
+	}
+	storeForEvent.set(playerId, { ...record, deleted_at: new Date().toISOString() });
 };
 
 export const setPlayers = (eventId: string, players: PlayerImportData[]): PlayerRecord[] => {
@@ -95,7 +105,8 @@ export const setPlayers = (eventId: string, players: PlayerImportData[]): Player
 			event_id: eventId,
 			name,
 			note: entry.note?.trim() ?? null,
-			created_at: new Date().toISOString()
+			created_at: new Date().toISOString(),
+			deleted_at: null
 		};
 
 		eventStore.set(record.id, record);
@@ -119,12 +130,18 @@ export const getPlayerById = (playerId: string): PlayerRecord => {
 	if (!found) {
 		throw new Error('Player not found');
 	}
+	if (found.record.deleted_at != null) {
+		throw new Error('Player not found');
+	}
 	return found.record;
 };
 
 export const updatePlayerById = (playerId: string, data: PlayerData): PlayerRecord => {
 	const found = findPlayerById(playerId);
 	if (!found) {
+		throw new Error('Player not found');
+	}
+	if (found.record.deleted_at != null) {
 		throw new Error('Player not found');
 	}
 	const updated: PlayerRecord = {
@@ -141,7 +158,11 @@ export const deletePlayerById = (playerId: string): void => {
 	if (!found) {
 		throw new Error('Player not found');
 	}
-	store.get(found.eventId)!.delete(playerId);
+	const record = store.get(found.eventId)!.get(playerId)!;
+	if (record.deleted_at != null) {
+		throw new Error('Player not found');
+	}
+	store.get(found.eventId)!.set(playerId, { ...record, deleted_at: new Date().toISOString() });
 };
 
 export const __resetForTests = () => {

@@ -653,6 +653,7 @@ export default function PairsRoute() {
 									<div className="flex flex-wrap gap-3">
 										<button
 											type="submit"
+											data-testid="update-pair-button"
 											disabled={isSubmitting}
 											className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
 										>
@@ -663,6 +664,7 @@ export default function PairsRoute() {
 											<input type="hidden" name="pairId" value={pair.id} />
 											<button
 												type="submit"
+												data-testid="delete-pair-button"
 												disabled={isSubmitting}
 												className="rounded-lg border border-rose-300 px-4 py-2 text-sm font-medium text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:border-rose-200 disabled:text-rose-300"
 												onClick={(event) => {

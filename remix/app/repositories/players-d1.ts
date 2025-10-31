@@ -5,7 +5,7 @@ export const createPlayersRepositoryD1 = (db: D1Database) => {
 	return {
 		async listPlayers(eventId: string): Promise<PlayerRecord[]> {
 			const result = await db
-				.prepare('SELECT id, event_id, name, note, created_at FROM players WHERE event_id = ? ORDER BY name COLLATE NOCASE')
+				.prepare('SELECT id, event_id, name, note, created_at FROM players WHERE event_id = ? AND deleted_at IS NULL ORDER BY name COLLATE NOCASE')
 				.bind(eventId)
 				.all<any>();
 
@@ -14,7 +14,8 @@ export const createPlayersRepositoryD1 = (db: D1Database) => {
 				event_id: row.event_id,
 				name: row.name,
 				note: row.note ?? null,
-				created_at: row.created_at
+				created_at: row.created_at,
+				deleted_at: null
 			}));
 		},
 
@@ -34,13 +35,14 @@ export const createPlayersRepositoryD1 = (db: D1Database) => {
 				event_id: eventId,
 				name,
 				note: note,
-				created_at: createdAt
+				created_at: createdAt,
+				deleted_at: null
 			};
 		},
 
 		async ensurePlayer(playerId: string): Promise<PlayerRecord> {
 			const result = await db
-				.prepare('SELECT id, event_id, name, note, created_at FROM players WHERE id = ?')
+				.prepare('SELECT id, event_id, name, note, created_at FROM players WHERE id = ? AND deleted_at IS NULL')
 				.bind(playerId)
 				.first<any>();
 
@@ -53,7 +55,8 @@ export const createPlayersRepositoryD1 = (db: D1Database) => {
 				event_id: result.event_id,
 				name: result.name,
 				note: result.note ?? null,
-				created_at: result.created_at
+				created_at: result.created_at,
+				deleted_at: null
 			};
 		},
 
@@ -73,14 +76,16 @@ export const createPlayersRepositoryD1 = (db: D1Database) => {
 				event_id: ensured.event_id,
 				name,
 				note: note,
-				created_at: ensured.created_at
+				created_at: ensured.created_at,
+				deleted_at: null
 			};
 		},
 
 		async deletePlayer(playerId: string): Promise<void> {
+			const deletedAt = new Date().toISOString();
 			const result = await db
-				.prepare('DELETE FROM players WHERE id = ?')
-				.bind(playerId)
+				.prepare('UPDATE players SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL')
+				.bind(deletedAt, playerId)
 				.run();
 
 			if (result.meta.changes === 0) {
@@ -111,8 +116,9 @@ export const createPlayersRepositoryD1 = (db: D1Database) => {
 					id,
 					name,
 					note: note,
-				event_id: eventId,
-				created_at: createdAt
+					event_id: eventId,
+					created_at: createdAt,
+					deleted_at: null
 				});
 			}
 

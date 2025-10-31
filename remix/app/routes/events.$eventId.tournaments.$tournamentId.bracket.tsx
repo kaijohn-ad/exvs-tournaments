@@ -386,7 +386,7 @@ export default function PublicBracketRoute() {
 			</section>
 
 			{/* ブラケット表示 */}
-			<section className="rounded-2xl border border-slate-200 bg-white p-8 shadow-lg">
+			<section className="rounded-2xl border border-slate-200 bg-white p-8 shadow-lg" data-testid="bracket">
 				<header className="mb-6">
 					<h2 className="text-xl font-semibold text-slate-900">トーナメント表</h2>
 					<p className="mt-1 text-sm text-slate-600">横スクロールで全ラウンドを表示できます。</p>
@@ -400,6 +400,7 @@ export default function PublicBracketRoute() {
 							{rounds.map((round) => (
 								<section
 									key={round.round}
+									data-testid={`round-${round.round}`}
 									className="flex min-w-[280px] flex-col"
 									style={{ gap: `${round.gapFactor * 8}px` }}
 								>
@@ -415,6 +416,7 @@ export default function PublicBracketRoute() {
 											{round.matches.map((match) => (
 												<article
 													key={match.id}
+													data-testid={`match-${match.id}`}
 													className={`rounded-lg border p-4 transition-all ${
 														match.statusModifier === "completed"
 															? "border-green-200 bg-green-50"
@@ -445,6 +447,7 @@ export default function PublicBracketRoute() {
 													<div className="space-y-2">
 														{/* サイドA */}
 														<div
+															data-testid="participant-a"
 															className={`flex items-center justify-between rounded p-2 ${
 																match.isCompleted && match.winnerSide === "a"
 																	? "bg-green-100"
@@ -478,6 +481,7 @@ export default function PublicBracketRoute() {
 
 														{/* サイドB */}
 														<div
+															data-testid="participant-b"
 															className={`flex items-center justify-between rounded p-2 ${
 																match.isCompleted && match.winnerSide === "b"
 																	? "bg-green-100"

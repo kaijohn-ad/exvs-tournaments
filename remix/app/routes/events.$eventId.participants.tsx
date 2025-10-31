@@ -91,7 +91,7 @@ export default function EventParticipantsRoute() {
 			</header>
 
 			{/* プレイヤー一覧 */}
-			<section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+			<section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" data-testid="participants-list">
 				<h3 className="text-lg font-semibold text-slate-900 mb-4">
 					プレイヤー ({players.length})
 				</h3>
@@ -102,6 +102,7 @@ export default function EventParticipantsRoute() {
 						{players.map((player) => (
 							<div
 								key={player.id}
+								data-testid={`participant-${player.id}`}
 								className="rounded-lg border border-slate-200 bg-slate-50 p-4"
 							>
 								<div className="font-medium text-slate-900">{player.name}</div>
@@ -115,7 +116,7 @@ export default function EventParticipantsRoute() {
 			</section>
 
 			{/* ペア一覧 */}
-			<section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+			<section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" data-testid="participants-list">
 				<h3 className="text-lg font-semibold text-slate-900 mb-4">
 					ペア ({pairs.length})
 				</h3>
@@ -126,6 +127,7 @@ export default function EventParticipantsRoute() {
 						{pairs.map((pair) => (
 							<div
 								key={pair.id}
+								data-testid={`pair-${pair.id}`}
 								className="rounded-lg border border-slate-200 bg-slate-50 p-4"
 							>
 								<div className="font-medium text-slate-900">

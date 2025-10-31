@@ -266,20 +266,20 @@
   - [x] 外部キー参照の考慮：`bracket_matches`、`team_battle_slots`、`matches`などで削除済みペアが参照されないよう制約確認
   - [x] テスト更新：論理削除の動作確認テストを追加
   - [x] UI更新：削除済みペアが一覧に表示されないことを確認（`listPairs`のフィルタにより自動対応）
-- [ ] プレイヤーの論理削除実装（統一ID保持とデータ整合性のため）
-  - [ ] D1マイグレーション作成：`players`テーブルに`deleted_at TEXT`カラムを追加
-  - [ ] D1リポジトリ修正：`deletePlayer`を論理削除に変更（`deleted_at`を設定）
-  - [ ] D1リポジトリ修正：`listPlayers`で`deleted_at IS NULL`のもののみ取得
-  - [ ] メモリリポジトリ修正：論理削除に対応（`deleted_at`フィールド追加）
-  - [ ] 外部キー参照の考慮：以下のテーブルで削除済みプレイヤーが参照されないよう確認
+- [x] プレイヤーの論理削除実装（統一ID保持とデータ整合性のため）
+  - [x] D1マイグレーション作成：`players`テーブルに`deleted_at TEXT`カラムを追加
+  - [x] D1リポジトリ修正：`deletePlayer`を論理削除に変更（`deleted_at`を設定）
+  - [x] D1リポジトリ修正：`listPlayers`で`deleted_at IS NULL`のもののみ取得
+  - [x] メモリリポジトリ修正：論理削除に対応（`deleted_at`フィールド追加）
+  - [x] 外部キー参照の考慮：以下のテーブルで削除済みプレイヤーが参照されないよう確認（UIは`listPlayers`フィルタで除外。ソフト削除はFKを発火しないため、参照側の一覧/取得でも必要に応じフィルタ方針を継続検討）
     - `pairs`（`player1_id`, `player2_id` - 現在は`ON DELETE CASCADE`でペアが削除される）
     - `team_members`（`player_id` - 現在は`ON DELETE CASCADE`でチームメンバーが削除される）
     - `matches`（`side_a_player1_id`, `side_a_player2_id`, `side_b_player1_id`, `side_b_player2_id` - 現在は`ON DELETE SET NULL`）
     - `match_participations`（`player_id` - 現在は`ON DELETE CASCADE`で参加記録が削除される）
     - `player_stats`（`player_id` - 現在は`ON DELETE CASCADE`で統計が削除される）
     - `tournament_participants`（`player_id` - 現在は`ON DELETE CASCADE`で参加者が削除される）
-  - [ ] テスト更新：論理削除の動作確認テストを追加
-  - [ ] UI更新：削除済みプレイヤーが一覧に表示されないことを確認
+  - [x] テスト更新：論理削除の動作確認テストを追加
+  - [x] UI更新：削除済みプレイヤーが一覧に表示されないことを確認
 
 ### 優先度高：トーナメントブラケット機能
 - [x] トーナメント参加者登録機能
@@ -328,11 +328,11 @@
   - [x] BYEの表示対応（`isBracketMatch`フラグでBYE情報を保持）
 
 ### 優先度中：UIテスト・E2Eテスト改善
-- [ ] コード側で`data-testid`属性を追加（ブラウザ自動化テストの安定化）
-  - [ ] フォーム要素に`data-testid`属性を追加（`select[name="pairId"]` → `data-testid="pair-select"`）
-  - [ ] ボタン要素に`data-testid`属性を追加（`button[type="submit"]` → `data-testid="add-pair-button"`）
-  - [ ] 主要なUI要素に`data-testid`属性を追加（ペア選択、参加者一覧、ブラケット表示など）
-  - [ ] JavaScriptの`evaluate`で`querySelector('[data-testid="..."]')`を使えるようにする
+- [x] コード側で`data-testid`属性を追加（ブラウザ自動化テストの安定化）
+  - [x] フォーム要素に`data-testid`属性を追加（`select[name="pairId"]` → `data-testid="pair-select"`）
+  - [x] ボタン要素に`data-testid`属性を追加（`button[type="submit"]` → `data-testid="add-pair-button"`）
+  - [x] 主要なUI要素に`data-testid`属性を追加（ペア選択、参加者一覧、ブラケット表示など）
+  - [x] JavaScriptの`evaluate`で`querySelector('[data-testid="..."]')`を使えるようにする
 
 ### 優先度中：勝率ダイアグラム（プレイヤー/ペア間）
 - [ ] 機能概要策定

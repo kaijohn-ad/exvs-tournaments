@@ -669,6 +669,7 @@ export default function TournamentParticipantsRoute() {
 								</label>
 								<select
 									name="pairId"
+									data-testid="pair-select"
 									required
 									className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
 								>
@@ -731,6 +732,7 @@ export default function TournamentParticipantsRoute() {
 					<div className="flex justify-end">
 						<button
 							type="submit"
+							data-testid="add-pair-button"
 							disabled={isSubmitting}
 							className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-50"
 						>
@@ -773,7 +775,7 @@ export default function TournamentParticipantsRoute() {
 			</section>
 
 			{/* 参加者一覧 */}
-			<section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+			<section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" data-testid="participants-list">
 				<h2 className="text-lg font-semibold text-slate-900 mb-4">
 					参加者一覧 ({participants.length})
 				</h2>
@@ -784,6 +786,7 @@ export default function TournamentParticipantsRoute() {
 						{participants.map((participant) => (
 							<div
 								key={participant.id}
+								data-testid={`participant-${participant.id}`}
 								className="rounded-lg border border-slate-200 bg-slate-50 p-4"
 							>
 								<div className="flex items-center justify-between">

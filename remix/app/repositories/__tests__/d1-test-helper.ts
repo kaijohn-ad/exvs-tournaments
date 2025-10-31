@@ -203,6 +203,16 @@ function createMockD1Database() {
 								changes = 1;
 							}
 						}
+					} else if (tableName === 'players' && /SET deleted_at = \? WHERE id = \? AND deleted_at IS NULL/i.test(sql)) {
+						const [deletedAt, id] = boundParams;
+						const table = tables.get(tableName);
+						if (table) {
+							const existing = table.get(id);
+							// executeSQL実行後の状態を確認
+							if (existing && existing.deleted_at === deletedAt) {
+								changes = 1;
+							}
+						}
 					} else {
 						changes = 1; // 他のUPDATEはとりあえず1を返す
 					}
@@ -265,7 +275,7 @@ async function executeSQL(sql: string, params: any[], tables: Map<string, Map<st
 			// rudimentary FK: require event to exist when inserting
 			const events = tables.get('events');
 			if (!events || !events.has(params[1])) throw new Error('FK violation: event not found');
-			table.set(id, { id, event_id: params[1] || '', name: params[2] || '', note: params[3] ?? null, created_at: now });
+			table.set(id, { id, event_id: params[1] || '', name: params[2] || '', note: params[3] ?? null, created_at: params[4] ?? now, deleted_at: null });
 		} else if (tableName === 'pairs') {
 			const events = tables.get('events');
 			if (!events || !events.has(params[1])) throw new Error('FK violation: event not found');
@@ -416,6 +426,12 @@ async function executeSQL(sql: string, params: any[], tables: Map<string, Map<st
 			const [name, note, id, eventId] = params;
 			const existing = table.get(id);
 			if (existing && existing.event_id === eventId) table.set(id, { ...existing, name, note });
+		} else if (tableName === 'players' && /SET deleted_at = \? WHERE id = \? AND deleted_at IS NULL/i.test(sql)) {
+			const [deletedAt, id] = params;
+			const existing = table.get(id);
+			if (existing && !existing.deleted_at) {
+				table.set(id, { ...existing, deleted_at: deletedAt });
+			}
 		} else if (tableName === 'players' && /SET name = \?, note = \? WHERE id = \?/i.test(sql)) {
 			const [name, note, id] = params;
 			const existing = table.get(id);
@@ -567,8 +583,11 @@ async function initializeTestSchema(db: D1Database) {
 			name TEXT NOT NULL,
 			note TEXT,
 			created_at TEXT NOT NULL DEFAULT (datetime('now')),
+			deleted_at TEXT,
 			FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
 		);
+
+		CREATE INDEX IF NOT EXISTS idx_players_event_id_deleted ON players(event_id, deleted_at);
 
 		CREATE TABLE IF NOT EXISTS pairs (
 			id TEXT PRIMARY KEY,
