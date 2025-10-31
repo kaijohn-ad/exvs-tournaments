@@ -30,20 +30,38 @@ export async function createEvent(
 	await page.waitForLoadState("networkidle");
 
 	// 成功メッセージを確認
-	await expect(page.getByText(/イベント「.*」を作成しました/)).toBeVisible();
+	const successMessage = page.getByText(/イベント「.*」を作成しました/);
+	await expect(successMessage).toBeVisible();
 
-	// 作成されたイベントIDを取得（セレクトボックスから最新のものを取得）
-	const eventSelect = page.locator('select[name="eventId"]');
+	// ページをリロードして最新の状態を取得
+	await page.reload();
+	await page.waitForLoadState("networkidle");
+
+	// セレクトボックスを探す（ラベルで探す）
+	const eventSelect = page.locator('label:has-text("イベント一覧")').locator('select');
+	await expect(eventSelect).toBeVisible();
+
+	// セレクトボックスから最新のイベントオプションを取得
 	const eventOptions = await eventSelect.locator("option").all();
-	if (eventOptions.length === 0) {
+	if (eventOptions.length <= 1) {
+		// "-- イベントを選択 --" のみの場合
 		throw new Error("イベントが作成されませんでした");
 	}
 
-	// 最初のオプション（最新）のvalueを取得
-	const eventId = await eventOptions[0].getAttribute("value");
+	// 最初のオプション（"-- イベントを選択 --"）を除いた、2番目のオプション（最新）のvalueを取得
+	const eventId = await eventOptions[1].getAttribute("value");
 	if (!eventId) {
-		throw new Error("イベントIDを取得できませんでした");
+		// デバッグ情報を出力
+		const optionTexts = await Promise.all(
+			eventOptions.map(async (opt) => await opt.textContent()),
+		);
+		throw new Error(
+			`イベントIDを取得できませんでした。オプション数: ${eventOptions.length}, オプション内容: ${optionTexts.join(", ")}`,
+		);
 	}
+
+	// デバッグ: 取得したイベントIDを確認
+	console.log(`[createEvent] Created event ID: ${eventId}, Name: ${name}`);
 
 	return eventId;
 }
@@ -60,26 +78,48 @@ export async function createPlayers(
 	eventId: string,
 	players: string[],
 ): Promise<string[]> {
-	await page.goto(`/admin/events/${eventId}/entries/players`);
+	const url = `/admin/events/${eventId}/entries/players`;
+	await page.goto(url);
 	await page.waitForLoadState("networkidle");
+
+	// エラーページが表示されていないか確認
+	const errorHeading = page.getByRole("heading", { name: "エラーが発生しました" });
+	if (await errorHeading.isVisible()) {
+		throw new Error(`Failed to load players page for event ${eventId}. Error page displayed.`);
+	}
+
+	// プレイヤー追加フォームが表示されていることを確認
+	const addForm = page.locator('form').filter({
+		has: page.locator('input[name="_intent"][value="create"]'),
+	});
+	await expect(addForm).toBeVisible();
 
 	const playerIds: string[] = [];
 
 	for (const playerName of players) {
 		// プレイヤー名を入力
-		await page.fill('input[name="name"]', playerName);
-		await page.click('button[type="submit"]');
+		const nameInput = addForm.locator('input[name="name"]');
+		await expect(nameInput).toBeVisible();
+		await nameInput.fill(playerName);
+
+		// 送信ボタンをクリック
+		await addForm.locator('button[type="submit"]').click();
 		await page.waitForLoadState("networkidle");
 
 		// 成功メッセージを確認
-		await expect(page.getByText(/プレイヤー「.*」を追加しました/)).toBeVisible();
+		await expect(page.getByText(/プレイヤー「.*」を追加しました/)).toBeVisible({
+			timeout: 5000,
+		});
 
 		// 作成されたプレイヤーIDを取得（最新の行から）
 		const playerRows = page.locator('tr[data-testid^="player-"]');
-		const lastRow = playerRows.last();
-		const playerId = await lastRow.getAttribute("data-testid");
-		if (playerId) {
-			playerIds.push(playerId.replace("player-", ""));
+		const count = await playerRows.count();
+		if (count > 0) {
+			const lastRow = playerRows.last();
+			const playerId = await lastRow.getAttribute("data-testid");
+			if (playerId) {
+				playerIds.push(playerId.replace("player-", ""));
+			}
 		}
 	}
 

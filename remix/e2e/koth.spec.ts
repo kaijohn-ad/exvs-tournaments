@@ -7,16 +7,23 @@ test.describe("KOTH (King of the Hill) Team Battle", () => {
 	let teamBId: string;
 
 	test.beforeEach(async ({ page }) => {
-		// テストデータをシード
+		// テストデータをシード（develop環境では/test-utils/seedが利用できない可能性があるため、スキップ可能）
 		const response = await page.request.post("/test-utils/seed", {
 			form: {
 				_intent: "seedKoth",
 			},
 		});
 
-		expect(response.ok()).toBeTruthy();
+		// develop環境では403エラーの可能性があるため、エラーをそのままスローしてテストを失敗させる
+		// （新しいテストファイルを使用することを推奨）
+		if (!response.ok()) {
+			throw new Error(`/test-utils/seed returned ${response.status()}. This test requires local development environment or should use new test files.`);
+		}
+
 		const data = await response.json();
-		expect(data.success).toBe(true);
+		if (!data.success) {
+			throw new Error("Failed to seed test data");
+		}
 
 		eventId = data.eventId;
 		battleId = data.battleId;
