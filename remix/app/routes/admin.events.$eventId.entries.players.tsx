@@ -407,18 +407,22 @@ export default function PlayersRoute() {
 	}, [actionData]);
 
 	useEffect(() => {
-		// SSR時は実行しない
-		if (typeof window === "undefined" || typeof URL === "undefined") {
+		// SSR時は実行しない（クライアント側でのみ実行）
+		if (typeof window === "undefined" || typeof URL === "undefined" || typeof Blob === "undefined") {
 			return;
 		}
 
-		const url = URL.createObjectURL(
-			new Blob([playersJson], { type: "application/json" })
-		);
-		setDownloadUrl(url);
-		return () => {
-			URL.revokeObjectURL(url);
-		};
+		try {
+			const blob = new Blob([playersJson], { type: "application/json" });
+			const url = URL.createObjectURL(blob);
+			setDownloadUrl(url);
+			return () => {
+				URL.revokeObjectURL(url);
+			};
+		} catch (error) {
+			// Blob作成に失敗した場合は何もしない（SSR環境など）
+			console.warn("Failed to create blob URL:", error);
+		}
 	}, [playersJson]);
 
 	const isSubmitting = navigation.state === "submitting";
@@ -632,6 +636,7 @@ export function ErrorBoundary() {
 	// プレビュー環境（develop.exvs-tournaments.pages.devなど）では常に詳細を表示
 	const isDevelopment =
 		(typeof window !== "undefined" &&
+			window.location &&
 			(window.location.hostname === "localhost" ||
 				window.location.hostname.includes("127.0.0.1") ||
 				window.location.hostname.includes("dev") ||

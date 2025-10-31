@@ -443,18 +443,22 @@ export default function PairsRoute() {
 	const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
 
 	useEffect(() => {
-		// SSR時は実行しない
-		if (typeof window === "undefined" || typeof URL === "undefined") {
+		// SSR時は実行しない（クライアント側でのみ実行）
+		if (typeof window === "undefined" || typeof URL === "undefined" || typeof Blob === "undefined") {
 			return;
 		}
 
-		const url = URL.createObjectURL(
-			new Blob([pairsJson], { type: "application/json" })
-		);
-		setDownloadUrl(url);
-		return () => {
-			URL.revokeObjectURL(url);
-		};
+		try {
+			const blob = new Blob([pairsJson], { type: "application/json" });
+			const url = URL.createObjectURL(blob);
+			setDownloadUrl(url);
+			return () => {
+				URL.revokeObjectURL(url);
+			};
+		} catch (error) {
+			// Blob作成に失敗した場合は何もしない（SSR環境など）
+			console.warn("Failed to create blob URL:", error);
+		}
 	}, [pairsJson]);
 
 	useEffect(() => {
