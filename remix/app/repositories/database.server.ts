@@ -641,8 +641,8 @@ export function getDatabase(context: AppLoadContext, options: DatabaseOptions = 
 		console.warn("[database] Production environment detected but USE_MEMORY_STORE is true. This may cause data loss!");
 	}
 
-	// 開発環境では常にメモリストアを使用
-	if (shouldUseMemory || process.env.NODE_ENV === 'development') {
+	// 明示的にメモリストアを使用する場合、または開発環境でD1が利用できない場合
+	if (shouldUseMemory || (process.env.NODE_ENV === 'development' && !hasDB)) {
 		logDb("db.selected", stage, {
 			driver: "memory",
 			fallback: false,
@@ -652,6 +652,7 @@ export function getDatabase(context: AppLoadContext, options: DatabaseOptions = 
 		return createMemoryDatabase();
 	}
 
+	// D1データベースが利用できない場合
 	if (!db || typeof db.prepare !== "function") {
 		const fallback = stage !== 'production';
 		
@@ -667,7 +668,8 @@ export function getDatabase(context: AppLoadContext, options: DatabaseOptions = 
 			dbType: typeof db,
 			hasPrepare: db && typeof db.prepare === "function",
 			contextKeys: Object.keys(context),
-			cloudflareEnv: context.cloudflare?.env ? Object.keys(context.cloudflare.env) : "undefined"
+			cloudflareEnv: context.cloudflare?.env ? Object.keys(context.cloudflare.env) : "undefined",
+			stage,
 		});
 		
 		// 本番環境ではメモリストアへのフォールバックを避ける
@@ -678,6 +680,7 @@ export function getDatabase(context: AppLoadContext, options: DatabaseOptions = 
 		return createMemoryDatabase();
 	}
 
+	// D1データベースを使用
 	logDb("db.selected", stage, {
 		driver: "d1",
 		fallback: false,

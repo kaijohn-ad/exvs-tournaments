@@ -29,9 +29,6 @@ declare module "@remix-run/cloudflare" {
 export function getLoadContext({ context }: GetLoadContextArgs): RemixAppLoadContext {
 	const { cloudflare } = context;
 
-	// 開発環境ではメモリストアを使用
-	const useMemoryStore = process.env.USE_MEMORY_STORE === 'true' || !cloudflare.env.DB;
-
 	// 一時的なコンテキストを作成してステージを取得
 	const tempContext: RemixAppLoadContext = {
 		cloudflare,
@@ -39,6 +36,14 @@ export function getLoadContext({ context }: GetLoadContextArgs): RemixAppLoadCon
 	};
 	const stage = getStage(tempContext);
 	const hasDB = !!cloudflare.env.DB;
+
+	// 開発環境ではメモリストアを使用
+	// プレビュー環境ではD1データベースが利用可能な場合はD1を使用、利用できない場合はメモリストアにフォールバック
+	// 本番環境ではD1データベースが必須
+	const useMemoryStore =
+		process.env.USE_MEMORY_STORE === 'true' ||
+		!hasDB ||
+		(stage === 'development' && !hasDB);
 
 	// db.env ログを出力
 	logDb("db.env", stage, {
