@@ -669,11 +669,12 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 				}
 
 				const existingMatches = await db.matches.listMatches("teamBattle", battleId);
+				const mainMatches = existingMatches.filter((m) => m.slot_index !== null);
 				const kothState = computeKothState(
 					battle.slots_count,
 					battle.team_a_id,
 					battle.team_b_id,
-					existingMatches,
+					mainMatches,
 				);
 
 				if (kothState.finished) {
@@ -746,11 +747,12 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 
 				// 試合後の状態を再計算して、終了判定
 				const updatedMatches = await db.matches.listMatches("teamBattle", battleId);
+				const mainUpdatedMatches = updatedMatches.filter((m) => m.slot_index !== null);
 				const updatedState = computeKothState(
 					battle.slots_count,
 					battle.team_a_id,
 					battle.team_b_id,
-					updatedMatches,
+					mainUpdatedMatches,
 				);
 
 				let finalStatus: TeamBattleRecord["status"] = battle.status;
@@ -840,11 +842,12 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 
 				// 状態を再計算して更新
 				const remainingMatches = matches.filter((m) => m.id !== matchId);
+				const mainRemainingMatches = remainingMatches.filter((m) => m.slot_index !== null);
 				const updatedState = computeKothState(
 					battle.slots_count,
 					battle.team_a_id,
 					battle.team_b_id,
-					remainingMatches,
+					mainRemainingMatches,
 				);
 
 				let finalStatus: TeamBattleRecord["status"] = "pending";

@@ -83,7 +83,8 @@ type MutationSource =
 	| "finalizeBattle"
 	| "recordTiebreaker"
 	| "recordKothMatch"
-	| "deleteKothMatch";
+	| "deleteKothMatch"
+	| "recordKothFriendlyMatch";
 
 type ActionSuccess = {
 	type: "success";
@@ -668,11 +669,12 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 				}
 
 				const existingMatches = await db.matches.listMatches("teamBattle", battleId);
+				const mainMatches = existingMatches.filter((m) => m.slot_index !== null);
 				const kothState = computeKothState(
 					battle.slots_count,
 					battle.team_a_id,
 					battle.team_b_id,
-					existingMatches,
+					mainMatches,
 				);
 
 				if (kothState.finished) {
@@ -745,11 +747,12 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 
 				// 試合後の状態を再計算して、終了判定
 				const updatedMatches = await db.matches.listMatches("teamBattle", battleId);
+				const mainUpdatedMatches = updatedMatches.filter((m) => m.slot_index !== null);
 				const updatedState = computeKothState(
 					battle.slots_count,
 					battle.team_a_id,
 					battle.team_b_id,
-					updatedMatches,
+					mainUpdatedMatches,
 				);
 
 				let finalStatus: TeamBattleRecord["status"] = battle.status;
@@ -839,11 +842,12 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 
 				// 状態を再計算して更新
 				const remainingMatches = matches.filter((m) => m.id !== matchId);
+				const mainRemainingMatches = remainingMatches.filter((m) => m.slot_index !== null);
 				const updatedState = computeKothState(
 					battle.slots_count,
 					battle.team_a_id,
 					battle.team_b_id,
-					remainingMatches,
+					mainRemainingMatches,
 				);
 
 				let finalStatus: TeamBattleRecord["status"] = "pending";
@@ -863,6 +867,180 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 					type: "success",
 					source: intent,
 					message: "最後の試合結果を削除しました。",
+				});
+			}
+
+			case "recordKothFriendlyMatch": {
+				const slotAIdRaw = normalizeText(formData.get("slotAId"));
+				const slotBIdRaw = normalizeText(formData.get("slotBId"));
+				const scoreARaw = normalizeText(formData.get("scoreA"));
+				const scoreBRaw = normalizeText(formData.get("scoreB"));
+				const winnerSideRaw = normalizeText(formData.get("winnerSide"));
+
+				if (!slotAIdRaw || !slotBIdRaw) {
+					return json<ActionError>(
+						{
+							type: "error",
+							source: intent,
+							message: "Side AとSide Bのスロットを選択してください。",
+						},
+						{ status: 400 },
+					);
+				}
+
+				if (slotAIdRaw === slotBIdRaw) {
+					return json<ActionError>(
+						{
+							type: "error",
+							source: intent,
+							message: "Side AとSide Bは異なるスロットを選択してください。",
+						},
+						{ status: 400 },
+					);
+				}
+
+				const scoreA = parseInteger(scoreARaw ?? "");
+				const scoreB = parseInteger(scoreBRaw ?? "");
+
+				if (scoreA === null || scoreB === null || scoreA < 0 || scoreB < 0) {
+					return json<ActionError>(
+						{
+							type: "error",
+							source: intent,
+							message: "スコアは0以上の整数で入力してください。",
+						},
+						{ status: 400 },
+					);
+				}
+
+				if (winnerSideRaw !== "a" && winnerSideRaw !== "b") {
+					return json<ActionError>(
+						{
+							type: "error",
+							source: intent,
+							message: "勝者を選択してください。",
+						},
+						{ status: 400 },
+					);
+				}
+
+				const battle = await db.teamBattles.ensureTeamBattle(eventId, battleId);
+
+				if (battle.format !== "koth") {
+					return json<ActionError>(
+						{
+							type: "error",
+							source: intent,
+							message: "この団体戦は勝ち抜き戦ではありません。",
+						},
+						{ status: 400 },
+					);
+				}
+
+				// KOTH状態を計算して終了確認
+				const existingMatches = await db.matches.listMatches("teamBattle", battleId);
+				const mainMatches = existingMatches.filter((m) => m.slot_index !== null);
+				const kothState = computeKothState(
+					battle.slots_count,
+					battle.team_a_id,
+					battle.team_b_id,
+					mainMatches,
+				);
+
+				if (!kothState.finished || !kothState.winnerTeamId) {
+					return json<ActionError>(
+						{
+							type: "error",
+							source: intent,
+							message: "追加対戦は、団体戦が終了した後にのみ登録できます。",
+						},
+						{ status: 400 },
+					);
+				}
+
+				// スロットを取得
+				const slots = await db.teamBattleSlots.listSlotsByBattle(battleId);
+				const slotA = slots.find((s) => s.id === slotAIdRaw);
+				const slotB = slots.find((s) => s.id === slotBIdRaw);
+
+				if (!slotA || !slotB) {
+					return json<ActionError>(
+						{
+							type: "error",
+							source: intent,
+							message: "選択されたスロットが見つかりません。",
+						},
+						{ status: 404 },
+					);
+				}
+
+				// 両方のスロットが勝者側チームに属していることを確認
+				if (slotA.team_id !== kothState.winnerTeamId || slotB.team_id !== kothState.winnerTeamId) {
+					return json<ActionError>(
+						{
+							type: "error",
+							source: intent,
+							message: "追加対戦は勝者側チームのスロットのみ使用できます。",
+						},
+						{ status: 400 },
+					);
+				}
+
+				// 両方のスロットが現在のインデックスより後ろにあることを確認
+				const winnerCurrentIndex =
+					kothState.winnerTeamId === battle.team_a_id
+						? kothState.aCurrentIndex
+						: kothState.bCurrentIndex;
+
+				if (
+					slotA.slot_index <= winnerCurrentIndex ||
+					slotB.slot_index <= winnerCurrentIndex
+				) {
+					return json<ActionError>(
+						{
+							type: "error",
+							source: intent,
+							message: "追加対戦は、現在の出場順より後ろのスロットのみ使用できます。",
+						},
+						{ status: 400 },
+					);
+				}
+
+				// プレイヤー情報を取得
+				const [slotAPlayers, slotBPlayers] = await Promise.all([
+					resolveSlotPlayers(db, eventId, slotA),
+					resolveSlotPlayers(db, eventId, slotB),
+				]);
+
+				const [slotAPlayer1, slotAPlayer2] =
+					slotAPlayers.length > 0 ? slotAPlayers : [slotA.player1_id, slotA.player2_id];
+				const [slotBPlayer1, slotBPlayer2] =
+					slotBPlayers.length > 0 ? slotBPlayers : [slotB.player1_id, slotB.player2_id];
+
+				// 追加対戦を記録（slot_index: null）
+				await db.matches.createMatch({
+					context: "teamBattle",
+					context_id: battleId,
+					slot_index: null,
+					side_a_type: slotA.assignment_type,
+					side_a_pair_id: slotA.pair_id,
+					side_a_player1_id: slotAPlayer1 ?? undefined,
+					side_a_player2_id: slotAPlayer2 ?? undefined,
+					side_b_type: slotB.assignment_type,
+					side_b_pair_id: slotB.pair_id,
+					side_b_player1_id: slotBPlayer1 ?? undefined,
+					side_b_player2_id: slotBPlayer2 ?? undefined,
+					score_a: scoreA,
+					score_b: scoreB,
+					winner_side: winnerSideRaw,
+				});
+
+				// プレイヤー統計やバトルステータスは更新しない
+
+				return json<ActionSuccess>({
+					type: "success",
+					source: intent,
+					message: "追加対戦（エキシビション）を記録しました。",
 				});
 			}
 		}
@@ -935,6 +1113,15 @@ function KothBattleUI({
 				(slot) => slot.team_id === battle.team_b_id && slot.slot_index > kothState.bCurrentIndex
 			)
 		: [];
+
+	// 勝者側チームの残りスロットを取得（追加対戦用）
+	const winnerTeamId = kothState.winnerTeamId;
+	const winnerRemainingSlots = winnerTeamId === battle.team_a_id 
+		? remainingTeamASlots 
+		: winnerTeamId === battle.team_b_id 
+		? remainingTeamBSlots 
+		: [];
+	const canPlayFriendlyMatch = kothState.finished && winnerRemainingSlots.length >= 2;
 
 	return (
 		<>
@@ -1032,6 +1219,134 @@ function KothBattleUI({
 					<div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-4 text-center text-sm text-slate-500">
 						両チームの現在の出場枠のラインナップが未設定です。ラインナップ編集ページで割り当ててください。
 					</div>
+				) : canPlayFriendlyMatch ? (
+					<div className="flex flex-col gap-4" data-testid="koth-friendly-card">
+						<div className="rounded-2xl border border-indigo-200 bg-indigo-50 px-6 py-4">
+							<div className="mb-2 flex items-center gap-2">
+								<span className="text-lg">🎮</span>
+								<h3 className="text-base font-semibold text-indigo-900">追加対戦（エキシビション）</h3>
+							</div>
+							<p className="text-sm text-indigo-800">
+								勝者側チーム（{getTeamName(winnerTeamId ?? "")}）の残ったプレイヤー同士で追加対戦を楽しむことができます。
+							</p>
+						</div>
+
+						<Form method="post" className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-inner">
+							<input type="hidden" name="_intent" value="recordKothFriendlyMatch" />
+
+							<div className="grid gap-4 md:grid-cols-2">
+								<label className="flex flex-col gap-2 text-sm text-slate-600">
+									<span className="font-medium">Side A（勝者側チームのスロット）</span>
+									<select
+										name="slotAId"
+										required
+										data-testid="koth-friendly-side-a-select"
+										className="rounded-lg border border-slate-300 px-3 py-2 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+									>
+										<option value="">選択してください</option>
+										{winnerRemainingSlots.map((slot) => (
+											<option key={slot.id} value={slot.id}>
+												{slot.slot_index + 1}番手:{" "}
+												{slot.assignment_type === "pair" ? (
+													(() => {
+														const pair = slot.pair_id ? pairsById.get(slot.pair_id) : undefined;
+														const player1 = pair?.player1_id ? playersById.get(pair.player1_id) : undefined;
+														const player2 = pair?.player2_id ? playersById.get(pair.player2_id) : undefined;
+														return pair
+															? `${player1?.name ?? "(Unknown)"} / ${player2?.name ?? "(Unknown)"}`
+															: "ペア情報が見つかりません";
+													})()
+												) : (
+													`${slot.player1_id ? playersById.get(slot.player1_id)?.name ?? "(Unknown)" : "-"} / ${slot.player2_id ? playersById.get(slot.player2_id)?.name ?? "(Unknown)" : "-"}`
+												)}
+											</option>
+										))}
+									</select>
+								</label>
+
+								<label className="flex flex-col gap-2 text-sm text-slate-600">
+									<span className="font-medium">Side B（勝者側チームのスロット）</span>
+									<select
+										name="slotBId"
+										required
+										data-testid="koth-friendly-side-b-select"
+										className="rounded-lg border border-slate-300 px-3 py-2 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+									>
+										<option value="">選択してください</option>
+										{winnerRemainingSlots.map((slot) => (
+											<option key={slot.id} value={slot.id}>
+												{slot.slot_index + 1}番手:{" "}
+												{slot.assignment_type === "pair" ? (
+													(() => {
+														const pair = slot.pair_id ? pairsById.get(slot.pair_id) : undefined;
+														const player1 = pair?.player1_id ? playersById.get(pair.player1_id) : undefined;
+														const player2 = pair?.player2_id ? playersById.get(pair.player2_id) : undefined;
+														return pair
+															? `${player1?.name ?? "(Unknown)"} / ${player2?.name ?? "(Unknown)"}`
+															: "ペア情報が見つかりません";
+													})()
+												) : (
+													`${slot.player1_id ? playersById.get(slot.player1_id)?.name ?? "(Unknown)" : "-"} / ${slot.player2_id ? playersById.get(slot.player2_id)?.name ?? "(Unknown)" : "-"}`
+												)}
+											</option>
+										))}
+									</select>
+								</label>
+							</div>
+
+							<div className="grid gap-4 sm:grid-cols-2">
+								<label className="flex flex-col gap-2 text-sm text-slate-600">
+									<span className="font-medium">スコアA</span>
+									<input
+										type="number"
+										name="scoreA"
+										min={0}
+										max={10}
+										required
+										data-testid="koth-friendly-score-a"
+										className="rounded-lg border border-slate-300 px-3 py-2 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+									/>
+								</label>
+								<label className="flex flex-col gap-2 text-sm text-slate-600">
+									<span className="font-medium">スコアB</span>
+									<input
+										type="number"
+										name="scoreB"
+										min={0}
+										max={10}
+										required
+										data-testid="koth-friendly-score-b"
+										className="rounded-lg border border-slate-300 px-3 py-2 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+									/>
+								</label>
+							</div>
+
+							<label className="flex flex-col gap-2 text-sm text-slate-600">
+								<span className="font-medium">勝者</span>
+								<select
+									name="winnerSide"
+									required
+									data-testid="koth-friendly-winner-select"
+									className="rounded-lg border border-slate-300 px-3 py-2 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+								>
+									<option value="">選択してください</option>
+									<option value="a">Side A</option>
+									<option value="b">Side B</option>
+								</select>
+							</label>
+
+							<div className="flex justify-end">
+								<button
+									type="submit"
+									disabled={isSubmitting}
+									data-testid="koth-friendly-record-button"
+									className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-indigo-300"
+								>
+									追加対戦を記録
+								</button>
+							</div>
+						</Form>
+					</div>
 				) : hasRemainingPlayers ? (
 					<div className="rounded-2xl border border-amber-200 bg-amber-50 px-6 py-5" data-testid="koth-remaining-players-message">
 						<div className="mb-3 flex items-center gap-2">
@@ -1039,7 +1354,7 @@ function KothBattleUI({
 							<h3 className="text-base font-semibold text-amber-900">残ったプレイヤーがいます</h3>
 						</div>
 						<p className="mb-4 text-sm text-amber-800">
-							この団体戦は終了しましたが、両チームとも大将まで到達していません。残ったプレイヤー同士で試合を楽しむことができます。
+							この団体戦は終了しましたが、勝者側チームの残りプレイヤーが2人未満のため、追加対戦を登録できません。
 						</p>
 						<div className="space-y-3">
 							{remainingTeamASlots.length > 0 && (
@@ -1144,10 +1459,17 @@ function KothBattleUI({
 									}`}
 								>
 									<div className="flex items-center justify-between">
-										<span className="text-sm font-semibold text-slate-700">
-											試合 {idx + 1}
-										</span>
-										{isLast && !battleCompleted && (
+										<div className="flex items-center gap-2">
+											<span className="text-sm font-semibold text-slate-700">
+												試合 {idx + 1}
+											</span>
+											{match.slot_index === null && (
+												<span className="rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-700">
+													エキシビション
+												</span>
+											)}
+										</div>
+										{isLast && !battleCompleted && match.slot_index !== null && (
 											<Form method="post" className="inline-block">
 												<input type="hidden" name="_intent" value="deleteKothMatch" />
 												<input type="hidden" name="matchId" value={match.id} />
@@ -1320,11 +1642,14 @@ export default function TeamBattleDetailRoute() {
 
 	const kothState = useMemo<KothState | null>(() => {
 		if (!isKoth) return null;
+		const mainMatches = loaderData.matches.filter(
+			(m) => m.context === "teamBattle" && m.slot_index !== null,
+		);
 		return computeKothState(
 			loaderData.battle.slots_count,
 			loaderData.battle.team_a_id,
 			loaderData.battle.team_b_id,
-			loaderData.matches.filter((m) => m.context === "teamBattle"),
+			mainMatches,
 		);
 	}, [isKoth, loaderData.battle, loaderData.matches]);
 
@@ -1333,6 +1658,14 @@ export default function TeamBattleDetailRoute() {
 		return loaderData.matches
 			.filter((m) => m.context === "teamBattle")
 			.sort((a, b) => {
+				// slot_index === null の試合（エキシビション）は後ろに
+				if (a.slot_index === null && b.slot_index !== null) return 1;
+				if (a.slot_index !== null && b.slot_index === null) return -1;
+				if (a.slot_index === null && b.slot_index === null) {
+					// 両方エキシビションの場合は played_at でソート
+					return a.played_at.localeCompare(b.played_at);
+				}
+				// 両方通常の試合の場合は slot_index でソート
 				const aIdx = a.slot_index ?? 0;
 				const bIdx = b.slot_index ?? 0;
 				return aIdx - bIdx;
