@@ -51,6 +51,7 @@ export default defineConfig(({ mode }) => {
 			environment: "node",
 			setupFiles: ["./vitest.setup.ts"],
 			css: true,
+			exclude: ["**/node_modules/**", "**/e2e/**", "**/.{idea,git,cache,output,temp}/**"],
 		},
 	};
 });

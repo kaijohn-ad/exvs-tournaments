@@ -19,6 +19,7 @@ import type { PlayerRecord } from "~/repositories/players";
 import type { TeamBattleSlotRecord } from "~/repositories/team-battle-slots";
 import type { TeamBattleRecord } from "~/repositories/team-battles";
 import type { TeamRecord } from "~/repositories/teams";
+import { computeKothState, type KothState } from "~/utils/team-battles/koth";
 
 const normalizeText = (value: FormDataEntryValue | null): string | undefined => {
 	if (value == null) return undefined;
@@ -80,7 +81,9 @@ type MutationSource =
 	| "assignSlot"
 	| "deleteSlotResult"
 	| "finalizeBattle"
-	| "recordTiebreaker";
+	| "recordTiebreaker"
+	| "recordKothMatch"
+	| "deleteKothMatch";
 
 type ActionSuccess = {
 	type: "success";
@@ -609,6 +612,259 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 					message: "タイブレークの結果を記録しました。",
 				});
 			}
+
+			case "recordKothMatch": {
+				const scoreARaw = normalizeText(formData.get("scoreA"));
+				const scoreBRaw = normalizeText(formData.get("scoreB"));
+				const winnerTeamId = normalizeText(formData.get("winnerTeamId"));
+
+				const scoreA = parseInteger(scoreARaw ?? "");
+				const scoreB = parseInteger(scoreBRaw ?? "");
+
+				if (scoreA === null || scoreB === null || scoreA < 0 || scoreB < 0) {
+					return json<ActionError>(
+						{
+							type: "error",
+							source: intent,
+							message: "スコアは0以上の整数で入力してください。",
+						},
+						{ status: 400 },
+					);
+				}
+
+				if (!winnerTeamId) {
+					return json<ActionError>(
+						{
+							type: "error",
+							source: intent,
+							message: "勝者を選択してください。",
+						},
+						{ status: 400 },
+					);
+				}
+
+				const battle = await db.teamBattles.ensureTeamBattle(eventId, battleId);
+
+				if (battle.format !== "koth") {
+					return json<ActionError>(
+						{
+							type: "error",
+							source: intent,
+							message: "この団体戦は勝ち抜き戦ではありません。",
+						},
+						{ status: 400 },
+					);
+				}
+
+				if (winnerTeamId !== battle.team_a_id && winnerTeamId !== battle.team_b_id) {
+					return json<ActionError>(
+						{
+							type: "error",
+							source: intent,
+							message: "勝者として選択されたチームが無効です。",
+						},
+						{ status: 400 },
+					);
+				}
+
+				const existingMatches = await db.matches.listMatches("teamBattle", battleId);
+				const kothState = computeKothState(
+					battle.slots_count,
+					battle.team_a_id,
+					battle.team_b_id,
+					existingMatches,
+				);
+
+				if (kothState.finished) {
+					return json<ActionError>(
+						{
+							type: "error",
+							source: intent,
+							message: "この団体戦は既に終了しています。",
+						},
+						{ status: 400 },
+					);
+				}
+
+				const slots = await db.teamBattleSlots.listSlotsByBattle(battleId);
+				const teamASlot = slots.find(
+					(slot) => slot.team_id === battle.team_a_id && slot.slot_index === kothState.aCurrentIndex,
+				);
+				const teamBSlot = slots.find(
+					(slot) => slot.team_id === battle.team_b_id && slot.slot_index === kothState.bCurrentIndex,
+				);
+
+				if (!teamASlot || !teamBSlot) {
+					return json<ActionError>(
+						{
+							type: "error",
+							source: intent,
+							message: "現在の出場枠のラインナップが設定されていません。ラインナップ編集ページで設定してください。",
+						},
+						{ status: 400 },
+					);
+				}
+
+				const winnerSide = winnerTeamId === battle.team_a_id ? "a" : "b";
+				const matchIndex = kothState.nextMatchIndex;
+
+				const [teamAPlayers, teamBPlayers] = await Promise.all([
+					resolveSlotPlayers(db, eventId, teamASlot),
+					resolveSlotPlayers(db, eventId, teamBSlot),
+				]);
+
+				const [teamAPlayer1, teamAPlayer2] =
+					teamAPlayers.length > 0 ? teamAPlayers : [teamASlot.player1_id, teamASlot.player2_id];
+				const [teamBPlayer1, teamBPlayer2] =
+					teamBPlayers.length > 0 ? teamBPlayers : [teamBSlot.player1_id, teamBSlot.player2_id];
+
+				await db.matches.createMatch({
+					context: "teamBattle",
+					context_id: battleId,
+					slot_index: matchIndex,
+					side_a_type: teamASlot.assignment_type,
+					side_a_pair_id: teamASlot.pair_id,
+					side_a_player1_id: teamAPlayer1 ?? undefined,
+					side_a_player2_id: teamAPlayer2 ?? undefined,
+					side_b_type: teamBSlot.assignment_type,
+					side_b_pair_id: teamBSlot.pair_id,
+					side_b_player1_id: teamBPlayer1 ?? undefined,
+					side_b_player2_id: teamBPlayer2 ?? undefined,
+					score_a: scoreA,
+					score_b: scoreB,
+					winner_side: winnerSide,
+				});
+
+				for (const playerId of teamAPlayers) {
+					await db.playerStats.incrementPlayerStats(playerId, "teamBattle", battleId, winnerSide === "a");
+				}
+
+				for (const playerId of teamBPlayers) {
+					await db.playerStats.incrementPlayerStats(playerId, "teamBattle", battleId, winnerSide === "b");
+				}
+
+				// 試合後の状態を再計算して、終了判定
+				const updatedMatches = await db.matches.listMatches("teamBattle", battleId);
+				const updatedState = computeKothState(
+					battle.slots_count,
+					battle.team_a_id,
+					battle.team_b_id,
+					updatedMatches,
+				);
+
+				let finalStatus: TeamBattleRecord["status"] = battle.status;
+				let finalResult: TeamBattleRecord["result"] = battle.result;
+
+				if (updatedState.finished) {
+					finalStatus = "completed";
+					finalResult = updatedState.winnerTeamId === battle.team_a_id ? "team_a_win" : "team_b_win";
+				} else if (battle.status === "pending") {
+					finalStatus = "in_progress";
+				}
+
+				await db.teamBattles.updateTeamBattle(eventId, battleId, {
+					...battle,
+					status: finalStatus,
+					result: finalResult ?? undefined,
+				});
+
+				return json<ActionSuccess>({
+					type: "success",
+					source: intent,
+					message: updatedState.finished
+						? `試合結果を記録しました。団体戦終了: ${updatedState.winnerTeamId === battle.team_a_id ? "チームA" : "チームB"}の勝利`
+						: `試合${matchIndex + 1}の結果を記録しました。`,
+				});
+			}
+
+			case "deleteKothMatch": {
+				const matchId = normalizeText(formData.get("matchId"));
+				if (!matchId) {
+					return json<ActionError>(
+						{
+							type: "error",
+							source: intent,
+							message: "対象の試合IDが指定されていません。",
+						},
+						{ status: 400 },
+					);
+				}
+
+				const battle = await db.teamBattles.ensureTeamBattle(eventId, battleId);
+
+				if (battle.format !== "koth") {
+					return json<ActionError>(
+						{
+							type: "error",
+							source: intent,
+							message: "この団体戦は勝ち抜き戦ではありません。",
+						},
+						{ status: 400 },
+					);
+				}
+
+				const matches = await db.matches.listMatches("teamBattle", battleId);
+				const matchToDelete = matches.find((m) => m.id === matchId);
+
+				if (!matchToDelete) {
+					return json<ActionError>(
+						{
+							type: "error",
+							source: intent,
+							message: "指定された試合が見つかりません。",
+						},
+						{ status: 404 },
+					);
+				}
+
+				// 最後の試合のみ削除可能
+				const sortedMatches = matches.sort((a, b) => {
+					const aIdx = a.slot_index ?? 0;
+					const bIdx = b.slot_index ?? 0;
+					return bIdx - aIdx;
+				});
+
+				if (sortedMatches.length === 0 || sortedMatches[0].id !== matchId) {
+					return json<ActionError>(
+						{
+							type: "error",
+							source: intent,
+							message: "最後の試合のみ削除できます。",
+						},
+						{ status: 400 },
+					);
+				}
+
+				await db.matches.deleteMatch(matchId);
+
+				// 状態を再計算して更新
+				const remainingMatches = matches.filter((m) => m.id !== matchId);
+				const updatedState = computeKothState(
+					battle.slots_count,
+					battle.team_a_id,
+					battle.team_b_id,
+					remainingMatches,
+				);
+
+				let finalStatus: TeamBattleRecord["status"] = "pending";
+				let finalResult: TeamBattleRecord["result"] = undefined;
+
+				if (remainingMatches.length > 0) {
+					finalStatus = "in_progress";
+				}
+
+				await db.teamBattles.updateTeamBattle(eventId, battleId, {
+					...battle,
+					status: finalStatus,
+					result: finalResult,
+				});
+
+				return json<ActionSuccess>({
+					type: "success",
+					source: intent,
+					message: "最後の試合結果を削除しました。",
+				});
+			}
 		}
 
 		return json<ActionError>(
@@ -630,6 +886,215 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 			{ status: 500 },
 		);
 	}
+}
+
+function KothBattleUI({
+	battle,
+	slots,
+	kothState,
+	kothMatches,
+	teamNameById,
+	pairsById,
+	playersById,
+	getTeamName,
+	battleCompleted,
+	isSubmitting,
+}: {
+	battle: TeamBattleRecord;
+	slots: TeamBattleSlotRecord[];
+	kothState: KothState | null;
+	kothMatches: MatchRecord[];
+	teamNameById: Map<string, string>;
+	pairsById: Map<string, PairRecord>;
+	playersById: Map<string, PlayerRecord>;
+	getTeamName: (teamId: string) => string;
+	battleCompleted: boolean;
+	isSubmitting: boolean;
+}) {
+	if (!kothState) return null;
+
+	const teamASlot = slots.find(
+		(slot) => slot.team_id === battle.team_a_id && slot.slot_index === kothState.aCurrentIndex,
+	);
+	const teamBSlot = slots.find(
+		(slot) => slot.team_id === battle.team_b_id && slot.slot_index === kothState.bCurrentIndex,
+	);
+
+	return (
+		<>
+			<article className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm" data-testid="koth-next-match-card">
+				<header className="mb-6 flex flex-col gap-2">
+					<h2 className="text-lg font-semibold text-slate-900">
+						{kothState.finished ? "試合終了" : "次の対戦カード"}
+					</h2>
+					<p className="text-sm text-slate-500">
+						{kothState.finished
+							? "この団体戦は終了しています。"
+							: "次の対戦のラインナップと結果を入力してください。"}
+					</p>
+				</header>
+
+				{!kothState.finished && teamASlot && teamBSlot ? (
+					<div className="flex flex-col gap-4">
+						<div className="grid items-center gap-4 rounded-2xl border border-slate-200 bg-slate-50/60 p-4 md:grid-cols-[1fr_auto_1fr]">
+							<SlotAssignment
+								title="チームA"
+								slot={teamASlot}
+								teamName={getTeamName(battle.team_a_id)}
+								pairsById={pairsById}
+								playersById={playersById}
+							/>
+							<div className="flex items-center justify-center text-sm font-semibold text-slate-500">
+								VS
+							</div>
+							<SlotAssignment
+								title="チームB"
+								slot={teamBSlot}
+								teamName={getTeamName(battle.team_b_id)}
+								pairsById={pairsById}
+								playersById={playersById}
+							/>
+						</div>
+
+						<Form method="post" className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-inner">
+							<input type="hidden" name="_intent" value="recordKothMatch" />
+
+							<div className="grid gap-4 sm:grid-cols-2">
+								<label className="flex flex-col gap-2 text-sm text-slate-600">
+									<span className="font-medium">スコアA</span>
+									<input
+										type="number"
+										name="scoreA"
+										min={0}
+										max={10}
+										required
+										data-testid="koth-score-a"
+										className="rounded-lg border border-slate-300 px-3 py-2 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+									/>
+								</label>
+								<label className="flex flex-col gap-2 text-sm text-slate-600">
+									<span className="font-medium">スコアB</span>
+									<input
+										type="number"
+										name="scoreB"
+										min={0}
+										max={10}
+										required
+										data-testid="koth-score-b"
+										className="rounded-lg border border-slate-300 px-3 py-2 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+									/>
+								</label>
+							</div>
+
+							<label className="flex flex-col gap-2 text-sm text-slate-600">
+								<span className="font-medium">勝者</span>
+								<select
+									name="winnerTeamId"
+									required
+									data-testid="koth-winner-select"
+									className="rounded-lg border border-slate-300 px-3 py-2 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+								>
+									<option value="">選択してください</option>
+									<option value={battle.team_a_id}>{getTeamName(battle.team_a_id)}</option>
+									<option value={battle.team_b_id}>{getTeamName(battle.team_b_id)}</option>
+								</select>
+							</label>
+
+							<div className="flex justify-end">
+								<button
+									type="submit"
+									disabled={isSubmitting}
+									data-testid="koth-record-result-button"
+									className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-indigo-300"
+								>
+									結果を記録
+								</button>
+							</div>
+						</Form>
+					</div>
+				) : !kothState.finished ? (
+					<div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-4 text-center text-sm text-slate-500">
+						両チームの現在の出場枠のラインナップが未設定です。ラインナップ編集ページで割り当ててください。
+					</div>
+				) : null}
+			</article>
+
+			{kothMatches.length > 0 && (
+				<article className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm" data-testid="koth-match-history">
+					<header className="mb-6 flex flex-col gap-2">
+						<h2 className="text-lg font-semibold text-slate-900">試合履歴</h2>
+						<p className="text-sm text-slate-500">
+							これまでに行われた試合の一覧です。最後の試合のみ削除できます。
+						</p>
+					</header>
+
+					<div className="space-y-4">
+						{kothMatches.map((match, idx) => {
+							const isLast = idx === kothMatches.length - 1;
+							return (
+								<div
+									key={match.id}
+									data-testid={`koth-match-${idx + 1}`}
+									className={`flex flex-col gap-3 rounded-2xl border p-4 ${
+										match.winner_side === "a"
+											? "border-indigo-200 bg-indigo-50/70"
+											: "border-violet-200 bg-violet-50/70"
+									}`}
+								>
+									<div className="flex items-center justify-between">
+										<span className="text-sm font-semibold text-slate-700">
+											試合 {idx + 1}
+										</span>
+										{isLast && !battleCompleted && (
+											<Form method="post" className="inline-block">
+												<input type="hidden" name="_intent" value="deleteKothMatch" />
+												<input type="hidden" name="matchId" value={match.id} />
+												<button
+													type="submit"
+													disabled={isSubmitting}
+													data-testid="koth-delete-last-match-button"
+													className="rounded-lg border border-rose-200 px-3 py-1 text-xs font-semibold text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:text-rose-300"
+												>
+													削除
+												</button>
+											</Form>
+										)}
+									</div>
+									<div className="flex items-baseline justify-center gap-4 text-2xl font-semibold">
+										<span
+											className={`rounded px-2 py-1 ${
+												match.winner_side === "a"
+													? "bg-indigo-100 text-indigo-700"
+													: "text-slate-500"
+											}`}
+										>
+											{match.score_a}
+										</span>
+										<span className="text-lg font-medium text-slate-400">-</span>
+										<span
+											className={`rounded px-2 py-1 ${
+												match.winner_side === "b"
+													? "bg-violet-100 text-violet-700"
+													: "text-slate-500"
+											}`}
+										>
+											{match.score_b}
+										</span>
+									</div>
+									<div className="text-center text-sm text-slate-600">
+										勝者:{" "}
+										{match.winner_side === "a"
+											? getTeamName(battle.team_a_id)
+											: getTeamName(battle.team_b_id)}
+									</div>
+								</div>
+							);
+						})}
+					</div>
+				</article>
+			)}
+		</>
+	);
 }
 
 const SlotAssignment = ({
@@ -749,6 +1214,28 @@ export default function TeamBattleDetailRoute() {
 		loaderData.battle.slots_count;
 	const needsTiebreaker = loaderData.battle.status === "tiebreak_required";
 	const battleCompleted = loaderData.battle.status === "completed";
+	const isKoth = loaderData.battle.format === "koth";
+
+	const kothState = useMemo<KothState | null>(() => {
+		if (!isKoth) return null;
+		return computeKothState(
+			loaderData.battle.slots_count,
+			loaderData.battle.team_a_id,
+			loaderData.battle.team_b_id,
+			loaderData.matches.filter((m) => m.context === "teamBattle"),
+		);
+	}, [isKoth, loaderData.battle, loaderData.matches]);
+
+	const kothMatches = useMemo(() => {
+		if (!isKoth) return [];
+		return loaderData.matches
+			.filter((m) => m.context === "teamBattle")
+			.sort((a, b) => {
+				const aIdx = a.slot_index ?? 0;
+				const bIdx = b.slot_index ?? 0;
+				return aIdx - bIdx;
+			});
+	}, [isKoth, loaderData.matches]);
 
 	const getTeamName = (teamId: string) => teamNameById.get(teamId) ?? "(Unknown)";
 
@@ -777,7 +1264,7 @@ export default function TeamBattleDetailRoute() {
 			) : null}
 
 			<section className="grid gap-6">
-				<article className="rounded-3xl border border-slate-200 bg-gradient-to-br from-indigo-50 via-white to-violet-50 p-6 shadow-sm">
+				<article className="rounded-3xl border border-slate-200 bg-gradient-to-br from-indigo-50 via-white to-violet-50 p-6 shadow-sm" data-testid="battle-info-card">
 					<div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
 						<div>
 							<h2 className="text-xl font-semibold text-slate-900">
@@ -787,6 +1274,7 @@ export default function TeamBattleDetailRoute() {
 						</div>
 						<span
 							className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${getStatusClass(loaderData.battle.status)}`}
+							data-testid={battleCompleted ? "battle-finished" : undefined}
 						>
 							{getStatusLabel(loaderData.battle.status)}
 						</span>
@@ -795,7 +1283,9 @@ export default function TeamBattleDetailRoute() {
 					<div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
 						<div className="rounded-2xl border border-indigo-100 bg-white/80 p-4 shadow-xs">
 							<p className="text-xs font-medium uppercase tracking-wide text-indigo-500">形式</p>
-							<p className="mt-1 text-lg font-semibold text-slate-900">{loaderData.battle.format}</p>
+							<p className="mt-1 text-lg font-semibold text-slate-900">
+								{loaderData.battle.format === "koth" ? "勝ち抜き戦" : "早稲田式"}
+							</p>
 						</div>
 						<div className="rounded-2xl border border-indigo-100 bg-white/80 p-4 shadow-xs">
 							<p className="text-xs font-medium uppercase tracking-wide text-indigo-500">スロット数</p>
@@ -817,30 +1307,54 @@ export default function TeamBattleDetailRoute() {
 						</div>
 					</div>
 
-					<div className="mt-6 flex items-center justify-center gap-6 rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm">
+					<div className="mt-6 flex items-center justify-center gap-6 rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm" data-testid="koth-score-display">
 						<div className="flex flex-col items-center gap-1">
 							<span className="text-sm font-medium text-slate-500">
 								{getTeamName(loaderData.battle.team_a_id)}
 							</span>
-							<span className="text-4xl font-bold text-slate-900">{currentScore.teamA}</span>
+							<span className="text-4xl font-bold text-slate-900">
+								{isKoth && kothState ? kothState.bLosses : currentScore.teamA}
+							</span>
+							{isKoth && kothState && (
+								<span className="text-xs text-slate-400">敗戦数</span>
+							)}
 						</div>
 						<span className="text-3xl font-semibold text-slate-400">-</span>
 						<div className="flex flex-col items-center gap-1">
-							<span className="text-4xl font-bold text-slate-900">{currentScore.teamB}</span>
+							<span className="text-4xl font-bold text-slate-900">
+								{isKoth && kothState ? kothState.aLosses : currentScore.teamB}
+							</span>
 							<span className="text-sm font-medium text-slate-500">
 								{getTeamName(loaderData.battle.team_b_id)}
 							</span>
+							{isKoth && kothState && (
+								<span className="text-xs text-slate-400">敗戦数</span>
+							)}
 						</div>
 					</div>
 				</article>
 
-				<article className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-					<header className="mb-6 flex flex-col gap-2">
-						<h2 className="text-lg font-semibold text-slate-900">スロット別試合結果</h2>
-						<p className="text-sm text-slate-500">
-							各スロットのラインナップと試合結果を管理します。結果入力済みのスロットは青色で表示されます。
-						</p>
-					</header>
+				{isKoth ? (
+					<KothBattleUI
+						battle={loaderData.battle}
+						slots={loaderData.slots}
+						kothState={kothState}
+						kothMatches={kothMatches}
+						teamNameById={teamNameById}
+						pairsById={pairsById}
+						playersById={playersById}
+						getTeamName={getTeamName}
+						battleCompleted={battleCompleted}
+						isSubmitting={isSubmitting}
+					/>
+				) : (
+					<article className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+						<header className="mb-6 flex flex-col gap-2">
+							<h2 className="text-lg font-semibold text-slate-900">スロット別試合結果</h2>
+							<p className="text-sm text-slate-500">
+								各スロットのラインナップと試合結果を管理します。結果入力済みのスロットは青色で表示されます。
+							</p>
+						</header>
 
 					<div className="grid gap-6 lg:grid-cols-2">
 						{Array.from({ length: loaderData.battle.slots_count }).map((_, slotIndex) => {
@@ -1008,8 +1522,9 @@ export default function TeamBattleDetailRoute() {
 						})}
 					</div>
 				</article>
+				)}
 
-				{needsTiebreaker ? (
+				{needsTiebreaker && !isKoth ? (
 					<article className="rounded-3xl border border-amber-200 bg-gradient-to-br from-amber-50 via-white to-amber-100 p-6 shadow-sm">
 						<header className="mb-4">
 							<h2 className="text-lg font-semibold text-amber-800">🏆 タイブレーク（代表戦）</h2>
@@ -1072,7 +1587,7 @@ export default function TeamBattleDetailRoute() {
 					</article>
 				) : null}
 
-				{canFinalize && !battleCompleted && !needsTiebreaker ? (
+				{canFinalize && !battleCompleted && !needsTiebreaker && !isKoth ? (
 					<article className="rounded-3xl border border-emerald-200 bg-gradient-to-br from-emerald-50 via-white to-emerald-100 p-6 text-center shadow-sm">
 						<h2 className="text-lg font-semibold text-emerald-800">団体戦の確定</h2>
 						<p className="mt-2 text-sm font-medium text-emerald-700">

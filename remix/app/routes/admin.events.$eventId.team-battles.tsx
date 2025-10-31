@@ -60,6 +60,14 @@ const resultLabelMap: Record<string, string> = {
 	draw: "引き分け",
 };
 
+const formatLabelMap: Record<string, string> = {
+	waseda: "早稲田式",
+	koth: "勝ち抜き戦",
+};
+
+const getFormatLabel = (value: string | null | undefined) =>
+	value ? formatLabelMap[value] ?? value : "早稲田式";
+
 const getStatusLabel = (value: string | null | undefined) =>
 	statusLabelMap[value ?? "pending"] ?? value ?? "";
 
@@ -161,7 +169,8 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 				const teamBId = normalizeText(formData.get("team_b_id"));
 				const slotsCountRaw = normalizeText(formData.get("slots_count"));
 				const format = normalizeText(formData.get("format")) ?? "waseda";
-				const tiebreak = normalizeText(formData.get("tiebreak")) ?? "off";
+				const tiebreakRaw = normalizeText(formData.get("tiebreak"));
+				const tiebreak = format === "koth" ? "off" : (tiebreakRaw ?? "off");
 
 				if (!teamAId) {
 					return json<ActionError>(
@@ -248,7 +257,8 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 				const teamBId = normalizeText(formData.get("team_b_id"));
 				const slotsCountRaw = normalizeText(formData.get("slots_count"));
 				const format = normalizeText(formData.get("format"));
-				const tiebreak = normalizeText(formData.get("tiebreak"));
+				const tiebreakRaw = normalizeText(formData.get("tiebreak"));
+				const tiebreak = format === "koth" ? "off" : (tiebreakRaw ?? undefined);
 
 				if (!battleId) {
 					return json<ActionError>(
@@ -424,6 +434,117 @@ function FlashMessage({ action }: { action: ActionData | undefined | null }) {
 	);
 }
 
+function CreateBattleForm({
+	teams,
+	isSubmitting,
+}: {
+	teams: TeamRecord[];
+	isSubmitting: boolean;
+}) {
+	const [format, setFormat] = useState("waseda");
+
+	return (
+		<Form method="post" className="mt-4 grid gap-4">
+			<input type="hidden" name="_intent" value="create" />
+
+			<label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
+				<span>
+					チームA <span className="text-rose-500">*</span>
+				</span>
+				<select
+					name="team_a_id"
+					required
+					className="rounded-lg border border-slate-300 px-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+				>
+					<option value="">選択してください</option>
+					{teams.map((team) => (
+						<option key={team.id} value={team.id}>
+							{team.name}
+						</option>
+					))}
+				</select>
+			</label>
+
+			<label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
+				<span>
+					チームB <span className="text-rose-500">*</span>
+				</span>
+				<select
+					name="team_b_id"
+					required
+					className="rounded-lg border border-slate-300 px-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+				>
+					<option value="">選択してください</option>
+					{teams.map((team) => (
+						<option key={team.id} value={team.id}>
+							{team.name}
+						</option>
+					))}
+				</select>
+			</label>
+
+			<label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
+				<span>
+					スロット数 <span className="text-rose-500">*</span>
+				</span>
+				<select
+					name="slots_count"
+					defaultValue="3"
+					className="rounded-lg border border-slate-300 px-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+				>
+					{[1, 2, 3, 4, 5].map((value) => (
+						<option key={value} value={value}>
+							{value}
+						</option>
+					))}
+				</select>
+			</label>
+
+			<label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
+				<span>形式</span>
+				<select
+					name="format"
+					value={format}
+					onChange={(e) => setFormat(e.target.value)}
+					data-testid="format-select"
+					className="rounded-lg border border-slate-300 px-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+				>
+					<option value="waseda">早稲田式</option>
+					<option value="koth">勝ち抜き戦</option>
+				</select>
+			</label>
+
+			<label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
+				<span>タイブレーク</span>
+				<select
+					name="tiebreak"
+					defaultValue="off"
+					disabled={format === "koth"}
+					data-testid="tiebreak-select"
+					className="rounded-lg border border-slate-300 px-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+				>
+					<option value="off">なし</option>
+					<option value="representative">代表戦</option>
+				</select>
+				{format === "koth" && (
+					<p className="text-xs text-slate-500">勝ち抜き戦ではタイブレークは使用できません</p>
+				)}
+			</label>
+
+			<div className="flex items-center">
+				<button
+					type="submit"
+					disabled={isSubmitting}
+					data-testid="create-battle-button"
+					className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-blue-300"
+				>
+					作成
+				</button>
+			</div>
+		</Form>
+	);
+}
+
 function BattleEditForm({
 	battle,
 	teams,
@@ -435,6 +556,8 @@ function BattleEditForm({
 	onCancel: () => void;
 	isSubmitting: boolean;
 }) {
+	const [format, setFormat] = useState(battle.format);
+
 	return (
 		<Form method="post" className="grid gap-4">
 			<input type="hidden" name="_intent" value="update" />
@@ -497,10 +620,13 @@ function BattleEditForm({
 				<span>形式</span>
 				<select
 					name="format"
-					defaultValue={battle.format}
+					value={format}
+					onChange={(e) => setFormat(e.target.value)}
+					data-testid="format-select"
 					className="rounded-lg border border-slate-300 px-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
 				>
 					<option value="waseda">早稲田式</option>
+					<option value="koth">勝ち抜き戦</option>
 				</select>
 			</label>
 
@@ -509,11 +635,16 @@ function BattleEditForm({
 				<select
 					name="tiebreak"
 					defaultValue={battle.tiebreak}
-					className="rounded-lg border border-slate-300 px-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+					disabled={format === "koth"}
+					data-testid="tiebreak-select"
+					className="rounded-lg border border-slate-300 px-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
 				>
 					<option value="off">なし</option>
 					<option value="representative">代表戦</option>
 				</select>
+				{format === "koth" && (
+					<p className="text-xs text-slate-500">勝ち抜き戦ではタイブレークは使用できません</p>
+				)}
 			</label>
 
 			<div className="flex flex-wrap items-center gap-3">
@@ -593,95 +724,7 @@ export default function TeamBattlesRoute() {
 				<h2 className="text-lg font-semibold text-slate-900">団体戦を作成</h2>
 				{showCreateError ? <FlashMessage action={actionData} /> : null}
 				{hasEnoughTeams ? (
-					<Form method="post" className="mt-4 grid gap-4">
-						<input type="hidden" name="_intent" value="create" />
-
-						<label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
-							<span>
-								チームA <span className="text-rose-500">*</span>
-							</span>
-							<select
-								name="team_a_id"
-								required
-								className="rounded-lg border border-slate-300 px-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-							>
-								<option value="">選択してください</option>
-								{loaderData.teams.map((team) => (
-									<option key={team.id} value={team.id}>
-										{team.name}
-									</option>
-								))}
-							</select>
-						</label>
-
-						<label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
-							<span>
-								チームB <span className="text-rose-500">*</span>
-							</span>
-							<select
-								name="team_b_id"
-								required
-								className="rounded-lg border border-slate-300 px-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-							>
-								<option value="">選択してください</option>
-								{loaderData.teams.map((team) => (
-									<option key={team.id} value={team.id}>
-										{team.name}
-									</option>
-								))}
-							</select>
-						</label>
-
-						<label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
-							<span>
-								スロット数 <span className="text-rose-500">*</span>
-							</span>
-							<select
-								name="slots_count"
-								defaultValue="3"
-								className="rounded-lg border border-slate-300 px-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-							>
-								{[1, 2, 3, 4, 5].map((value) => (
-									<option key={value} value={value}>
-										{value}
-									</option>
-								))}
-							</select>
-						</label>
-
-						<label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
-							<span>形式</span>
-							<select
-								name="format"
-								defaultValue="waseda"
-								className="rounded-lg border border-slate-300 px-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-							>
-								<option value="waseda">早稲田式</option>
-							</select>
-						</label>
-
-						<label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
-							<span>タイブレーク</span>
-							<select
-								name="tiebreak"
-								defaultValue="off"
-								className="rounded-lg border border-slate-300 px-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-							>
-								<option value="off">なし</option>
-								<option value="representative">代表戦</option>
-							</select>
-						</label>
-
-						<div className="flex items-center">
-							<button
-								type="submit"
-								disabled={isSubmitting}
-								className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-blue-300"
-							>
-								作成
-							</button>
-						</div>
-					</Form>
+					<CreateBattleForm teams={loaderData.teams} isSubmitting={isSubmitting} />
 				) : (
 					<p className="mt-4 text-sm text-slate-500">
 						団体戦を作成するには、少なくとも2つのチームが必要です。
@@ -732,7 +775,7 @@ export default function TeamBattlesRoute() {
 												</h3>
 												<div className="flex flex-wrap gap-3 text-sm text-slate-500">
 													<span>スロット数: {battle.slots_count}</span>
-													<span>形式: {battle.format}</span>
+													<span>形式: {getFormatLabel(battle.format)}</span>
 													{battle.tiebreak !== "off" ? <span>タイブレーク: {battle.tiebreak}</span> : null}
 												</div>
 												<div className="flex flex-wrap items-center gap-3">
