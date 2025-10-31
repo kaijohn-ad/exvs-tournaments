@@ -95,9 +95,10 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 
 	if (intent === "create") {
 		const name = normalizeText(formData.get("name"));
-		const format = normalizeText(formData.get("format")) as 'single-elimination' | undefined;
+		const format = normalizeText(formData.get("format")) as 'single-elimination' | 'double-elimination' | 'ffa-2up' | undefined;
 		const seedingMode = normalizeText(formData.get("seedingMode")) as 'random' | 'manual' | undefined;
 		const entryMode = normalizeText(formData.get("entryMode")) as 'pair' | 'solo' | undefined;
+		const grandFinalsFormat = normalizeText(formData.get("grandFinalsFormat")) as 'single' | 'reset' | undefined;
 
 		if (!name) {
 			const tournaments = await db.tournaments.listTournaments(eventId);
@@ -115,7 +116,7 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 		}
 
 		try {
-			const tournament = await db.tournaments.createTournament(eventId, { name, format, seedingMode, entryMode });
+			const tournament = await db.tournaments.createTournament(eventId, { name, format, seedingMode, entryMode, grandFinalsFormat });
 			const tournaments = await db.tournaments.listTournaments(eventId);
 			const sortedTournaments = [...tournaments].sort((a, b) => a.name.localeCompare(b.name, 'ja'));
 
@@ -146,9 +147,10 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 	if (intent === "update") {
 		const tournamentId = normalizeText(formData.get("tournamentId"));
 		const name = normalizeText(formData.get("name"));
-		const format = normalizeText(formData.get("format")) as 'single-elimination' | undefined;
+		const format = normalizeText(formData.get("format")) as 'single-elimination' | 'double-elimination' | 'ffa-2up' | undefined;
 		const seedingMode = normalizeText(formData.get("seedingMode")) as 'random' | 'manual' | undefined;
 		const entryMode = normalizeText(formData.get("entryMode")) as 'pair' | 'solo' | undefined;
+		const grandFinalsFormat = normalizeText(formData.get("grandFinalsFormat")) as 'single' | 'reset' | undefined;
 
 		if (!tournamentId) {
 			const tournaments = await db.tournaments.listTournaments(eventId);
@@ -205,7 +207,7 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 				}
 			}
 
-			const tournament = await db.tournaments.updateTournament(tournamentId, { name, format, seedingMode, entryMode });
+			const tournament = await db.tournaments.updateTournament(tournamentId, { name, format, seedingMode, entryMode, grandFinalsFormat });
 			const tournaments = await db.tournaments.listTournaments(eventId);
 			const sortedTournaments = [...tournaments].sort((a, b) => a.name.localeCompare(b.name, 'ja'));
 
@@ -605,31 +607,41 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 			}
 		}
 
-		// シングルエリミネーション形式の処理
-		if (tournament.format && tournament.format !== 'single-elimination') {
-			const tournaments = await db.tournaments.listTournaments(eventId);
-			const sortedTournaments = [...tournaments].sort((a, b) => a.name.localeCompare(b.name, 'ja'));
-			return json<ActionData>(
-				{
-					type: "error",
-					source: "generate",
-					message: "ブラケット生成はシングルエリミネーション形式またはFFA 2-up形式でのみ利用できます。",
-					tournaments: sortedTournaments,
-					tournamentsJson: JSON.stringify(sortedTournaments, null, 2),
-					tournamentId
-				},
-				{ status: 400 }
-			);
-		}
-
+		// シングルエリミネーションまたはダブルエリミネーション形式の処理
 		try {
-			await generateAndStoreSingleEliminationBracket({
-				tournamentId,
-				pairs: pairsWithSeed,
-				seedingMode,
-				setMatches: (targetTournamentId, matches) =>
-					db.bracketMatches.setBracketMatches(targetTournamentId, matches)
-			});
+			if (tournament.format === 'single-elimination') {
+				await generateAndStoreSingleEliminationBracket({
+					tournamentId,
+					pairs: pairsWithSeed,
+					seedingMode,
+					setMatches: (targetTournamentId, matches) =>
+						db.bracketMatches.setBracketMatches(targetTournamentId, matches)
+				});
+			} else if (tournament.format === 'double-elimination') {
+				const { generateAndStoreDoubleEliminationBracket } = await import('~/repositories/bracket-generator');
+				await generateAndStoreDoubleEliminationBracket({
+					tournamentId,
+					pairs: pairsWithSeed,
+					seedingMode,
+					grandFinalsFormat: tournament.grandFinalsFormat ?? 'single',
+					setMatches: (targetTournamentId, matches) =>
+						db.bracketMatches.setBracketMatches(targetTournamentId, matches)
+				});
+			} else if (tournament.format !== 'ffa-2up') {
+				const tournaments = await db.tournaments.listTournaments(eventId);
+				const sortedTournaments = [...tournaments].sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+				return json<ActionData>(
+					{
+						type: "error",
+						source: "generate",
+						message: "ブラケット生成はシングルエリミネーション、ダブルエリミネーション、またはFFA 2-up形式でのみ利用できます。",
+						tournaments: sortedTournaments,
+						tournamentsJson: JSON.stringify(sortedTournaments, null, 2),
+						tournamentId
+					},
+					{ status: 400 }
+				);
+			}
 
 			const tournaments = await db.tournaments.listTournaments(eventId);
 			const sortedTournaments = [...tournaments].sort((a, b) => a.name.localeCompare(b.name, 'ja'));
@@ -695,6 +707,7 @@ export default function TournamentsRoute() {
 	const [editorPayload, setEditorPayload] = useState(initialTournamentsJson);
 	const [editorError, setEditorError] = useState<string | null>(null);
 	const [generatingTournamentId, setGeneratingTournamentId] = useState<string | null>(null);
+	const [createFormat, setCreateFormat] = useState<'single-elimination' | 'double-elimination' | 'ffa-2up'>('single-elimination');
 
 	const tournaments = useMemo(() => {
 		if (actionData?.tournaments) {
@@ -785,11 +798,35 @@ export default function TournamentsRoute() {
 						<select
 							id="format"
 							name="format"
+							value={createFormat}
+							onChange={(e) => setCreateFormat(e.target.value as 'single-elimination' | 'double-elimination' | 'ffa-2up')}
 							className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
 						>
 							<option value="single-elimination">シングルエリミネーション</option>
+							<option value="double-elimination">ダブルエリミネーション</option>
+							<option value="ffa-2up">FFA 2-up（4人1グループ→上位2名）</option>
 						</select>
 					</div>
+
+					{createFormat === 'double-elimination' && (
+						<div>
+							<label htmlFor="grandFinalsFormat" className="block text-sm font-medium text-slate-700 mb-2">
+								グランドファイナル形式
+							</label>
+							<select
+								id="grandFinalsFormat"
+								name="grandFinalsFormat"
+								defaultValue="single"
+								className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+							>
+								<option value="single">シングル（1試合のみ）</option>
+								<option value="reset">リセット（敗者側勝利時に追加試合）</option>
+							</select>
+							<p className="mt-1 text-xs text-slate-500">
+								シングル: 1試合で優勝決定。リセット: 敗者側が勝った場合、追加試合（GF2）を実施。
+							</p>
+						</div>
+					)}
 
 					<div>
 						<label htmlFor="seedingMode" className="block text-sm font-medium text-slate-700 mb-2">
@@ -874,9 +911,29 @@ export default function TournamentsRoute() {
 											className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
 										>
 											<option value="single-elimination">シングルエリミネーション</option>
+											<option value="double-elimination">ダブルエリミネーション</option>
 											<option value="ffa-2up">FFA 2-up（4人1グループ→上位2名）</option>
 										</select>
 									</div>
+
+									{tournament.format === 'double-elimination' && (
+										<div>
+											<label className="block text-sm font-medium text-slate-700 mb-2">
+												グランドファイナル形式
+											</label>
+											<select
+												name="grandFinalsFormat"
+												defaultValue={tournament.grandFinalsFormat ?? 'single'}
+												className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+											>
+												<option value="single">シングル（1試合のみ）</option>
+												<option value="reset">リセット（敗者側勝利時に追加試合）</option>
+											</select>
+											<p className="mt-1 text-xs text-slate-500">
+												シングル: 1試合で優勝決定。リセット: 敗者側が勝った場合、追加試合（GF2）を実施。
+											</p>
+										</div>
+									)}
 
 									<div>
 										<label className="block text-sm font-medium text-slate-700 mb-2">

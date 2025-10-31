@@ -294,7 +294,7 @@ async function executeSQL(sql: string, params: any[], tables: Map<string, Map<st
 		} else if (tableName === 'tournaments') {
 			const events = tables.get('events');
 			if (!events || !events.has(params[1])) throw new Error('FK violation: event not found');
-			table.set(id, { id, event_id: params[1] || '', name: params[2] || '', format: params[3] || 'single-elimination', seeding_mode: params[4] || 'random', created_at: now });
+			table.set(id, { id, event_id: params[1] || '', name: params[2] || '', format: params[3] || 'single-elimination', seeding_mode: params[4] || 'random', entry_mode: params[5] || 'pair', grand_finals_format: params[6] || 'single', created_at: now });
 		} else if (tableName === 'teams') {
 			table.set(id, { id, event_id: params[1] || '', name: params[2] || '', created_at: now });
 		} else if (tableName === 'team_members') {
@@ -336,17 +336,18 @@ async function executeSQL(sql: string, params: any[], tables: Map<string, Map<st
 			table.set(id, {
 				id,
 				tournament_id: params[1] || '',
-				round: params[2] ?? 1,
-				position: params[3] ?? 1,
-				participant_a_type: params[4] || 'pair',
-				participant_a_pair_id: params[5] ?? null,
-				participant_b_type: params[6] || 'pair',
-				participant_b_pair_id: params[7] ?? null,
-				score_a: params[8] ?? null,
-				score_b: params[9] ?? null,
-				winner_side: params[10] ?? null,
-				status: params[11] || 'pending',
-				created_at: params[12] ?? now
+				bracket: params[2] || 'winners',
+				round: params[3] ?? 1,
+				position: params[4] ?? 1,
+				participant_a_type: params[5] || 'pair',
+				participant_a_pair_id: params[6] ?? null,
+				participant_b_type: params[7] || 'pair',
+				participant_b_pair_id: params[8] ?? null,
+				score_a: params[9] ?? null,
+				score_b: params[10] ?? null,
+				winner_side: params[11] ?? null,
+				status: params[12] || 'pending',
+				created_at: params[13] ?? now
 			});
 		} else if (tableName === 'ffa_groups') {
 			// INSERT INTO ffa_groups (id, tournament_id, round, position, participant_1_type, participant_1_player_id, participant_2_type, participant_2_player_id, participant_3_type, participant_3_player_id, participant_4_type, participant_4_player_id, status, winner1_player_id, winner2_player_id, created_at)
@@ -480,6 +481,14 @@ async function executeSQL(sql: string, params: any[], tables: Map<string, Map<st
 			const [p1, p2, seed, id] = params;
 			const existing = table.get(id);
 			if (existing) table.set(id, { ...existing, player1_id: p1, player2_id: p2, seed });
+		} else if (tableName === 'tournaments' && /SET name = \?, format = \?, seeding_mode = \?, entry_mode = \?, grand_finals_format = \? WHERE id = \? AND event_id = \?/i.test(sql)) {
+			const [name, format, seeding_mode, entry_mode, grand_finals_format, id, eventId] = params;
+			const existing = table.get(id);
+			if (existing && existing.event_id === eventId) table.set(id, { ...existing, name, format, seeding_mode, entry_mode, grand_finals_format });
+		} else if (tableName === 'tournaments' && /SET name = \?, format = \?, seeding_mode = \?, entry_mode = \?, grand_finals_format = \? WHERE id = \?/i.test(sql)) {
+			const [name, format, seeding_mode, entry_mode, grand_finals_format, id] = params;
+			const existing = table.get(id);
+			if (existing) table.set(id, { ...existing, name, format, seeding_mode, entry_mode, grand_finals_format });
 		} else if (tableName === 'tournaments' && /SET name = \?, format = \?, seeding_mode = \? WHERE id = \? AND event_id = \?/i.test(sql)) {
 			const [name, format, seeding_mode, id, eventId] = params;
 			const existing = table.get(id);
@@ -658,9 +667,10 @@ async function initializeTestSchema(db: D1Database) {
 			id TEXT PRIMARY KEY,
 			event_id TEXT NOT NULL,
 			name TEXT NOT NULL,
-			format TEXT NOT NULL DEFAULT 'single-elimination' CHECK(format IN ('single-elimination', 'ffa-2up')),
+			format TEXT NOT NULL DEFAULT 'single-elimination' CHECK(format IN ('single-elimination', 'double-elimination', 'ffa-2up')),
 			seeding_mode TEXT NOT NULL DEFAULT 'random',
 			entry_mode TEXT NOT NULL DEFAULT 'pair' CHECK(entry_mode IN ('pair','solo')),
+			grand_finals_format TEXT NOT NULL DEFAULT 'single' CHECK(grand_finals_format IN ('single','reset')),
 			created_at TEXT NOT NULL DEFAULT (datetime('now')),
 			FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
 		);
@@ -766,6 +776,7 @@ async function initializeTestSchema(db: D1Database) {
 		CREATE TABLE IF NOT EXISTS bracket_matches (
 			id TEXT PRIMARY KEY,
 			tournament_id TEXT NOT NULL,
+			bracket TEXT NOT NULL DEFAULT 'winners' CHECK(bracket IN ('winners','losers','grand-finals')),
 			round INTEGER NOT NULL,
 			position INTEGER NOT NULL,
 			participant_a_type TEXT CHECK(participant_a_type IN ('pair', 'bye')),
@@ -780,7 +791,7 @@ async function initializeTestSchema(db: D1Database) {
 			FOREIGN KEY (tournament_id) REFERENCES tournaments(id) ON DELETE CASCADE,
 			FOREIGN KEY (participant_a_pair_id) REFERENCES pairs(id) ON DELETE SET NULL,
 			FOREIGN KEY (participant_b_pair_id) REFERENCES pairs(id) ON DELETE SET NULL,
-			UNIQUE(tournament_id, round, position)
+			UNIQUE(tournament_id, bracket, round, position)
 		);
 
 		CREATE TABLE IF NOT EXISTS ffa_groups (

@@ -305,3 +305,187 @@ export const generateAndStoreSingleEliminationBracket = (
 	const matches = generateSingleEliminationBracketMatches(params);
 	return params.setMatches(params.tournamentId, matches);
 };
+
+interface GenerateDoubleEliminationBracketParams extends GenerateBracketParams {
+	grandFinalsFormat?: 'single' | 'reset';
+}
+
+/**
+ * ダブルエリミネーションブラケットを生成する
+ * 
+ * Winners bracket: シングルエリミと同じ構造
+ * Losers bracket: Winnersの各ラウンドの敗者が落ちてくる
+ * Grand Finals: Winners優勝者 vs Losers優勝者
+ */
+export const generateDoubleEliminationBracketMatches = (
+	params: GenerateDoubleEliminationBracketParams
+): BracketMatchData[] => {
+	const pairs = params.pairs ?? [];
+
+	if (pairs.length === 0) {
+		return [];
+	}
+
+	const rng: Rng = params.rng ?? Math.random;
+	const seedingMode = params.seedingMode ?? 'random';
+	const grandFinalsFormat = params.grandFinalsFormat ?? 'single';
+	const bracketSize = nextPowerOfTwo(pairs.length);
+
+	if (bracketSize <= 0) {
+		return [];
+	}
+
+	// Winners bracket用のスロットを生成
+	let slots: (string | null)[] = [];
+	if (seedingMode === 'manual') {
+		slots = assignManualSeedingSlots(pairs, bracketSize);
+	} else {
+		slots = assignRandomSeedingSlots(pairs, bracketSize, rng);
+	}
+
+	const totalRounds = Math.log2(bracketSize);
+	const results: BracketMatchData[] = [];
+
+	// === Winners Bracket ===
+	const winnersMatches: BracketMatchData[] = [];
+	let participantsState = slots.map(stateFromSlot);
+
+	for (let round = 1; round <= totalRounds; round += 1) {
+		const matchesInRound = Math.floor(participantsState.length / 2);
+		const nextState: ParticipantState[] = [];
+
+		for (let matchIndex = 0; matchIndex < matchesInRound; matchIndex += 1) {
+			const sideA = participantsState[matchIndex * 2] ?? { kind: 'empty' };
+			const sideB = participantsState[matchIndex * 2 + 1] ?? { kind: 'empty' };
+
+			const { record, next } = buildAdvancement(round, matchIndex + 1, sideA, sideB);
+			const winnersRecord: BracketMatchData = {
+				...record,
+				bracket: 'winners'
+			};
+			winnersMatches.push(winnersRecord);
+			nextState.push(next);
+		}
+
+		participantsState = nextState;
+	}
+
+	results.push(...winnersMatches);
+
+	// === Losers Bracket ===
+	// Losers bracketの構造:
+	// - Round 1: Winners Round 1の敗者同士が対戦（2試合ごとにグループ化）
+	// - Round 2以降: 前ラウンドの勝者 vs Winners Round Nの敗者（交互に配置）
+	
+	const losersMatches: BracketMatchData[] = [];
+	const losersRounds: ParticipantState[][] = [];
+
+	// Losers Round 1: Winners Round 1の敗者をペアリング
+	// Winners Round 1のマッチ数 = bracketSize / 2
+	const winnersRound1Matches = winnersMatches.filter(m => m.round === 1);
+	const losersRound1Slots: ParticipantState[] = [];
+	
+	// Winners Round 1の各マッチから敗者を抽出（TBDとして配置）
+	for (let i = 0; i < winnersRound1Matches.length; i += 2) {
+		// 2試合ごとにグループ化
+		losersRound1Slots.push({ kind: 'tbd' }); // Match i の敗者
+		losersRound1Slots.push({ kind: 'tbd' }); // Match i+1 の敗者
+	}
+
+	losersRounds.push(losersRound1Slots);
+
+	// Losers Round 1のマッチを生成
+	for (let matchIndex = 0; matchIndex < losersRound1Slots.length / 2; matchIndex += 1) {
+		const sideA = losersRound1Slots[matchIndex * 2] ?? { kind: 'empty' };
+		const sideB = losersRound1Slots[matchIndex * 2 + 1] ?? { kind: 'empty' };
+
+		const { record } = buildAdvancement(1, matchIndex + 1, sideA, sideB);
+		losersMatches.push({
+			...record,
+			bracket: 'losers'
+		});
+	}
+
+	// Losers Round 2以降を生成
+	// Losers Round 2: Losers Round 1の勝者 vs Winners Round 2の敗者
+	// Losers Round N: 前ラウンドの勝者 vs Winners Round Nの敗者
+	// Losers Roundの最大数は totalRounds（Winners Roundの最大数と同じ）
+	// Losers Round 1の勝者数 = Losers Round 1の試合数 = losersRound1Slots.length / 2
+	const losersRound1WinnerCount = losersRound1Slots.length / 2;
+	let losersCurrentState: ParticipantState[] = Array.from({ length: losersRound1WinnerCount }, () => ({ kind: 'tbd' as const }));
+
+	// Losers Round 2から totalRounds まで生成（4ペアなら2ラウンド、8ペアなら3ラウンド、16ペアなら4ラウンド）
+	for (let losersRound = 2; losersRound <= totalRounds; losersRound += 1) {
+		const winnersRoundForLosers = losersRound; // Losers Round N は Winners Round N の敗者と対戦
+		const matchesInLosersRound = losersCurrentState.length;
+		const nextLosersState: ParticipantState[] = [];
+
+		for (let matchIndex = 0; matchIndex < matchesInLosersRound; matchIndex += 1) {
+			const sideA: ParticipantState = losersCurrentState[matchIndex] ?? { kind: 'tbd' as const };
+			const sideB: ParticipantState = { kind: 'tbd' as const }; // Winners Round Nの敗者
+
+			const { record, next } = buildAdvancement(losersRound, matchIndex + 1, sideA, sideB);
+			losersMatches.push({
+				...record,
+				bracket: 'losers'
+			});
+			nextLosersState.push(next);
+		}
+
+		losersCurrentState = nextLosersState;
+		
+		// 次のラウンドに進めない場合はループを抜ける
+		if (losersCurrentState.length === 0) {
+			break;
+		}
+	}
+
+	results.push(...losersMatches);
+
+	// === Grand Finals ===
+	// Winners優勝者 vs Losers優勝者
+	const grandFinalsMatch: BracketMatchData = {
+		bracket: 'grand-finals',
+		round: 1,
+		position: 1,
+		participant_a_type: 'pair',
+		participant_a_pair_id: null, // Winners優勝者（TBD）
+		participant_b_type: 'pair',
+		participant_b_pair_id: null, // Losers優勝者（TBD）
+		status: 'pending',
+		score_a: null,
+		score_b: null,
+		winner_side: null
+	};
+
+	results.push(grandFinalsMatch);
+
+	// Reset formatの場合、Grand Finals Round 2も生成
+	if (grandFinalsFormat === 'reset') {
+		const grandFinalsMatch2: BracketMatchData = {
+			bracket: 'grand-finals',
+			round: 2,
+			position: 1,
+			participant_a_type: 'pair',
+			participant_a_pair_id: null,
+			participant_b_type: 'pair',
+			participant_b_pair_id: null,
+			status: 'pending',
+			score_a: null,
+			score_b: null,
+			winner_side: null
+		};
+		results.push(grandFinalsMatch2);
+	}
+
+	return results;
+};
+
+export const generateAndStoreDoubleEliminationBracket = (
+	params: GenerateDoubleEliminationBracketParams & {
+		setMatches: (tournamentId: string, matches: BracketMatchData[]) => Promise<unknown> | unknown;
+	}
+) => {
+	const matches = generateDoubleEliminationBracketMatches(params);
+	return params.setMatches(params.tournamentId, matches);
+};

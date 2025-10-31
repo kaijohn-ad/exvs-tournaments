@@ -1,6 +1,7 @@
 import { generateUUID } from "~/utils/uuid";
 
 export interface BracketMatchData {
+	bracket?: 'winners' | 'losers' | 'grand-finals';
 	round: number;
 	position: number;
 	participant_a_type: 'pair' | 'bye';
@@ -21,6 +22,7 @@ export interface BracketMatchImportData extends BracketMatchData {
 export interface BracketMatchRecord extends BracketMatchData {
 	id: string;
 	tournament_id: string;
+	bracket: 'winners' | 'losers' | 'grand-finals';
 	participant_a_pair_id: string | null;
 	participant_b_pair_id: string | null;
 	score_a: number | null;
@@ -31,6 +33,7 @@ export interface BracketMatchRecord extends BracketMatchData {
 }
 
 export interface BracketMatchUpdateData {
+	bracket?: 'winners' | 'losers' | 'grand-finals';
 	round?: number;
 	position?: number;
 	participant_a_type?: 'pair' | 'bye';
@@ -72,10 +75,12 @@ const buildRecord = (
 ): BracketMatchRecord => {
 	const round = Math.max(1, Math.trunc(data.round));
 	const position = Math.max(1, Math.trunc(data.position));
+	const bracket = data.bracket ?? 'winners';
 
 	return {
 		id,
 		tournament_id: tournamentId,
+		bracket,
 		round,
 		position,
 		participant_a_type: data.participant_a_type,
@@ -98,6 +103,14 @@ const buildRecord = (
 
 const sortMatches = (matches: BracketMatchRecord[]) => {
 	return matches.slice().sort((a, b) => {
+		const bracketOrder = { 'winners': 0, 'losers': 1, 'grand-finals': 2 };
+		const aOrder = bracketOrder[a.bracket] ?? 0;
+		const bOrder = bracketOrder[b.bracket] ?? 0;
+		
+		if (aOrder !== bOrder) {
+			return aOrder - bOrder;
+		}
+		
 		if (a.round !== b.round) {
 			return a.round - b.round;
 		}
@@ -171,6 +184,7 @@ export const updateBracketMatch = (
 		throw new Error('Bracket match not found');
 	}
 
+	const bracket = data.bracket ?? existing.bracket;
 	const round = sanitizeUpdateRoundOrPosition(data.round, existing.round);
 	const position = sanitizeUpdateRoundOrPosition(data.position, existing.position);
 	const participantAType = data.participant_a_type ?? existing.participant_a_type;
@@ -198,6 +212,7 @@ export const updateBracketMatch = (
 
 	const updated: BracketMatchRecord = {
 		...existing,
+		bracket,
 		round,
 		position,
 		participant_a_type: participantAType,

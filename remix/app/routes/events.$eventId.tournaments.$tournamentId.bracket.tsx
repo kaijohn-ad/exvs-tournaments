@@ -294,6 +294,59 @@ export default function PublicBracketRoute() {
 		return bracketMatches.map(toMatchDisplay);
 	}, [bracketMatches, playerNameById, pairById]);
 
+	// ダブルエリミネーション用: bracketごとにグループ化
+	const bracketGroups = useMemo(() => {
+		const groups: Record<'winners' | 'losers' | 'grand-finals', MatchDisplay[]> = {
+			'winners': [],
+			'losers': [],
+			'grand-finals': []
+		};
+
+		for (let i = 0; i < bracketMatches.length; i++) {
+			const match = bracketMatches[i];
+			const display = matchDisplays[i];
+			if (display) {
+				const bracket = match.bracket ?? 'winners';
+				if (bracket in groups) {
+					groups[bracket as keyof typeof groups].push(display);
+				}
+			}
+		}
+
+		return groups;
+	}, [bracketMatches, matchDisplays]);
+
+	const getRoundsForBracket = (matches: typeof matchDisplays): RoundDisplay[] => {
+		const roundNumbers = Array.from(new Set(matches.map((m) => m.round))).sort((a, b) => a - b);
+		const totalRounds = roundNumbers.length;
+
+		return roundNumbers.map((roundNumber) => {
+			const roundMatches = matches.filter((m) => m.round === roundNumber);
+			const gapFactor = Math.pow(2, totalRounds - roundNumber - 1);
+
+			let roundName: string;
+			if (roundNumber === 1) {
+				roundName = "1回戦";
+			} else if (roundNumber === totalRounds) {
+				roundName = "決勝";
+			} else if (roundNumber === totalRounds - 1) {
+				roundName = "準決勝";
+			} else if (roundNumber === totalRounds - 2) {
+				roundName = "準々決勝";
+			} else {
+				roundName = `${roundNumber}回戦`;
+			}
+
+			return {
+				round: roundNumber,
+				name: roundName,
+				matches: roundMatches,
+				gapFactor,
+			};
+		});
+	};
+
+	// シングルエリミネーション用: 従来の処理
 	const roundNumbers = useMemo(() => {
 		const rounds = new Set(matchDisplays.map((m) => m.round));
 		return Array.from(rounds).sort((a, b) => a - b);
@@ -326,6 +379,11 @@ export default function PublicBracketRoute() {
 			};
 		});
 	}, [matchDisplays, roundNumbers]);
+
+	// ダブルエリミネーション用のrounds
+	const winnersRounds = useMemo(() => getRoundsForBracket(bracketGroups.winners), [bracketGroups.winners]);
+	const losersRounds = useMemo(() => getRoundsForBracket(bracketGroups.losers), [bracketGroups.losers]);
+	const grandFinalsRounds = useMemo(() => getRoundsForBracket(bracketGroups['grand-finals']), [bracketGroups['grand-finals']]);
 
 	// FFA形式のグループ表示処理
 	const toFfaGroupDisplay = (group: FfaGroupRecord): FfaGroupDisplay => {
@@ -425,7 +483,14 @@ export default function PublicBracketRoute() {
 	const activeRound = rounds.find((r) => r.matches.some((m) => m.isInProgress || m.isPending));
 	const activeRoundName = activeRound?.name ?? "完了";
 
+	// ダブルエリミネーション用の進行状況
+	const activeWinnersRound = winnersRounds.find((r) => r.matches.some((m) => m.isInProgress || m.isPending));
+	const activeLosersRound = losersRounds.find((r) => r.matches.some((m) => m.isInProgress || m.isPending));
+	const activeGrandFinalsRound = grandFinalsRounds.find((r) => r.matches.some((m) => m.isInProgress || m.isPending));
+	const activeDoubleEliminationRoundName = activeGrandFinalsRound?.name ?? activeLosersRound?.name ?? activeWinnersRound?.name ?? "完了";
+
 	const isFfaFormat = tournament.format === 'ffa-2up';
+	const isDoubleElimination = tournament.format === 'double-elimination';
 
 	return (
 		<div className="mx-auto flex w-full max-w-7xl flex-col gap-8 px-6 py-10">
@@ -451,7 +516,7 @@ export default function PublicBracketRoute() {
 				<header className="mb-6 flex items-center justify-between">
 					<h2 className="text-xl font-semibold text-slate-900">進行状況</h2>
 					<span className="rounded-full bg-blue-100 px-3 py-1 text-sm font-medium text-blue-800">
-						現在: {isFfaFormat ? activeFfaRoundName : activeRoundName}
+						現在: {isFfaFormat ? activeFfaRoundName : isDoubleElimination ? activeDoubleEliminationRoundName : activeRoundName}
 					</span>
 				</header>
 
@@ -633,6 +698,395 @@ export default function PublicBracketRoute() {
 							</div>
 						</div>
 					)
+				) : isDoubleElimination ? (
+					// ダブルエリミネーション: 3セクション表示
+					<div className="space-y-12">
+						{/* Winners Bracket */}
+						{winnersRounds.length > 0 && (
+							<div>
+								<h3 className="text-2xl font-bold text-slate-900 mb-6">勝者側ブラケット</h3>
+								<div className="overflow-x-auto">
+									<div className="flex min-w-max gap-8">
+										{winnersRounds.map((round) => (
+											<section
+												key={`winners-${round.round}`}
+												data-testid={`winners-round-${round.round}`}
+												className="flex min-w-[280px] flex-col"
+												style={{ gap: `${round.gapFactor * 8}px` }}
+											>
+												<header className="mb-4 text-center">
+													<h4 className="text-lg font-semibold text-slate-900">{round.name}</h4>
+													<span className="text-sm text-slate-500">R{round.round}</span>
+												</header>
+												{round.matches.length === 0 ? (
+													<p className="text-center text-sm text-slate-500">マッチが設定されていません。</p>
+												) : (
+													<div className="space-y-4">
+														{round.matches.map((match) => (
+															<article
+																key={match.id}
+																data-testid={`match-${match.id}`}
+																className={`rounded-lg border p-4 transition-all ${
+																	match.statusModifier === "completed"
+																		? "border-green-200 bg-green-50"
+																		: match.statusModifier === "in-progress"
+																		? "border-blue-200 bg-blue-50"
+																		: "border-slate-200 bg-white"
+																}`}
+															>
+																<header className="mb-3 flex items-center justify-between">
+																	<span className="text-xs font-medium text-slate-500">
+																		#{match.position}
+																	</span>
+																	<span
+																		className={`rounded-full px-2 py-1 text-xs font-medium ${
+																			match.statusClass === "status-completed"
+																				? "bg-green-100 text-green-800"
+																				: match.statusClass === "status-in-progress"
+																				? "bg-blue-100 text-blue-800"
+																				: match.statusClass === "status-auto"
+																				? "bg-purple-100 text-purple-800"
+																				: "bg-slate-100 text-slate-800"
+																		}`}
+																	>
+																		{match.statusLabel}
+																	</span>
+																</header>
+																<div className="space-y-2">
+																	<div
+																		data-testid="participant-a"
+																		className={`flex items-center justify-between rounded p-2 ${
+																			match.isCompleted && match.winnerSide === "a"
+																				? "bg-green-100"
+																				: match.isCompleted && match.winnerSide && match.winnerSide !== "a"
+																				? "bg-red-50"
+																				: match.isInProgress
+																				? "bg-blue-50"
+																				: "bg-slate-50"
+																		}`}
+																	>
+																		<div className="flex-1">
+																			{match.participantA.type === "pair" ? (
+																				<>
+																					<div className="font-medium text-slate-900">
+																						{match.participantA.playerNames[0]} / {match.participantA.playerNames[1]}
+																					</div>
+																					{match.participantA.seed != null && (
+																						<span className="text-xs text-slate-500">
+																							シード {match.participantA.seed}
+																						</span>
+																					)}
+																				</>
+																			) : (
+																				<span className="text-slate-500">{match.participantA.label}</span>
+																			)}
+																		</div>
+																		<span className="ml-2 font-mono text-lg font-bold">
+																			{match.scoreALabel}
+																		</span>
+																	</div>
+																	<div
+																		data-testid="participant-b"
+																		className={`flex items-center justify-between rounded p-2 ${
+																			match.isCompleted && match.winnerSide === "b"
+																				? "bg-green-100"
+																				: match.isCompleted && match.winnerSide && match.winnerSide !== "b"
+																				? "bg-red-50"
+																				: match.isInProgress
+																				? "bg-blue-50"
+																				: "bg-slate-50"
+																		}`}
+																	>
+																		<div className="flex-1">
+																			{match.participantB.type === "pair" ? (
+																				<>
+																					<div className="font-medium text-slate-900">
+																						{match.participantB.playerNames[0]} / {match.participantB.playerNames[1]}
+																					</div>
+																					{match.participantB.seed != null && (
+																						<span className="text-xs text-slate-500">
+																							シード {match.participantB.seed}
+																						</span>
+																					)}
+																				</>
+																			) : (
+																				<span className="text-slate-500">{match.participantB.label}</span>
+																			)}
+																		</div>
+																		<span className="ml-2 font-mono text-lg font-bold">
+																			{match.scoreBLabel}
+																		</span>
+																	</div>
+																</div>
+															</article>
+														))}
+													</div>
+												)}
+											</section>
+										))}
+									</div>
+								</div>
+							</div>
+						)}
+
+						{/* Losers Bracket */}
+						{losersRounds.length > 0 && (
+							<div>
+								<h3 className="text-2xl font-bold text-slate-900 mb-6">敗者側ブラケット</h3>
+								<div className="overflow-x-auto">
+									<div className="flex min-w-max gap-8">
+										{losersRounds.map((round) => (
+											<section
+												key={`losers-${round.round}`}
+												data-testid={`losers-round-${round.round}`}
+												className="flex min-w-[280px] flex-col"
+												style={{ gap: `${round.gapFactor * 8}px` }}
+											>
+												<header className="mb-4 text-center">
+													<h4 className="text-lg font-semibold text-slate-900">{round.name}</h4>
+													<span className="text-sm text-slate-500">R{round.round}</span>
+												</header>
+												{round.matches.length === 0 ? (
+													<p className="text-center text-sm text-slate-500">マッチが設定されていません。</p>
+												) : (
+													<div className="space-y-4">
+														{round.matches.map((match) => (
+															<article
+																key={match.id}
+																data-testid={`match-${match.id}`}
+																className={`rounded-lg border p-4 transition-all ${
+																	match.statusModifier === "completed"
+																		? "border-green-200 bg-green-50"
+																		: match.statusModifier === "in-progress"
+																		? "border-blue-200 bg-blue-50"
+																		: "border-slate-200 bg-white"
+																}`}
+															>
+																<header className="mb-3 flex items-center justify-between">
+																	<span className="text-xs font-medium text-slate-500">
+																		#{match.position}
+																	</span>
+																	<span
+																		className={`rounded-full px-2 py-1 text-xs font-medium ${
+																			match.statusClass === "status-completed"
+																				? "bg-green-100 text-green-800"
+																				: match.statusClass === "status-in-progress"
+																				? "bg-blue-100 text-blue-800"
+																				: match.statusClass === "status-auto"
+																				? "bg-purple-100 text-purple-800"
+																				: "bg-slate-100 text-slate-800"
+																		}`}
+																	>
+																		{match.statusLabel}
+																	</span>
+																</header>
+																<div className="space-y-2">
+																	<div
+																		data-testid="participant-a"
+																		className={`flex items-center justify-between rounded p-2 ${
+																			match.isCompleted && match.winnerSide === "a"
+																				? "bg-green-100"
+																				: match.isCompleted && match.winnerSide && match.winnerSide !== "a"
+																				? "bg-red-50"
+																				: match.isInProgress
+																				? "bg-blue-50"
+																				: "bg-slate-50"
+																		}`}
+																	>
+																		<div className="flex-1">
+																			{match.participantA.type === "pair" ? (
+																				<>
+																					<div className="font-medium text-slate-900">
+																						{match.participantA.playerNames[0]} / {match.participantA.playerNames[1]}
+																					</div>
+																					{match.participantA.seed != null && (
+																						<span className="text-xs text-slate-500">
+																							シード {match.participantA.seed}
+																						</span>
+																					)}
+																				</>
+																			) : (
+																				<span className="text-slate-500">{match.participantA.label}</span>
+																			)}
+																		</div>
+																		<span className="ml-2 font-mono text-lg font-bold">
+																			{match.scoreALabel}
+																		</span>
+																	</div>
+																	<div
+																		data-testid="participant-b"
+																		className={`flex items-center justify-between rounded p-2 ${
+																			match.isCompleted && match.winnerSide === "b"
+																				? "bg-green-100"
+																				: match.isCompleted && match.winnerSide && match.winnerSide !== "b"
+																				? "bg-red-50"
+																				: match.isInProgress
+																				? "bg-blue-50"
+																				: "bg-slate-50"
+																		}`}
+																	>
+																		<div className="flex-1">
+																			{match.participantB.type === "pair" ? (
+																				<>
+																					<div className="font-medium text-slate-900">
+																						{match.participantB.playerNames[0]} / {match.participantB.playerNames[1]}
+																					</div>
+																					{match.participantB.seed != null && (
+																						<span className="text-xs text-slate-500">
+																							シード {match.participantB.seed}
+																						</span>
+																					)}
+																				</>
+																			) : (
+																				<span className="text-slate-500">{match.participantB.label}</span>
+																			)}
+																		</div>
+																		<span className="ml-2 font-mono text-lg font-bold">
+																			{match.scoreBLabel}
+																		</span>
+																	</div>
+																</div>
+															</article>
+														))}
+													</div>
+												)}
+											</section>
+										))}
+									</div>
+								</div>
+							</div>
+						)}
+
+						{/* Grand Finals */}
+						{grandFinalsRounds.length > 0 && (
+							<div>
+								<h3 className="text-2xl font-bold text-slate-900 mb-6">グランドファイナル</h3>
+								<div className="overflow-x-auto">
+									<div className="flex min-w-max gap-8">
+										{grandFinalsRounds.map((round) => (
+											<section
+												key={`grand-finals-${round.round}`}
+												data-testid={`grand-finals-round-${round.round}`}
+												className="flex min-w-[280px] flex-col"
+												style={{ gap: `${round.gapFactor * 8}px` }}
+											>
+												<header className="mb-4 text-center">
+													<h4 className="text-lg font-semibold text-slate-900">
+														{round.round === 1 ? "グランドファイナル" : "グランドファイナル (Reset)"}
+													</h4>
+													<span className="text-sm text-slate-500">R{round.round}</span>
+												</header>
+												{round.matches.length === 0 ? (
+													<p className="text-center text-sm text-slate-500">マッチが設定されていません。</p>
+												) : (
+													<div className="space-y-4">
+														{round.matches.map((match) => (
+															<article
+																key={match.id}
+																data-testid={`match-${match.id}`}
+																className={`rounded-lg border p-4 transition-all ${
+																	match.statusModifier === "completed"
+																		? "border-green-200 bg-green-50"
+																		: match.statusModifier === "in-progress"
+																		? "border-blue-200 bg-blue-50"
+																		: "border-slate-200 bg-white"
+																}`}
+															>
+																<header className="mb-3 flex items-center justify-between">
+																	<span className="text-xs font-medium text-slate-500">
+																		#{match.position}
+																	</span>
+																	<span
+																		className={`rounded-full px-2 py-1 text-xs font-medium ${
+																			match.statusClass === "status-completed"
+																				? "bg-green-100 text-green-800"
+																				: match.statusClass === "status-in-progress"
+																				? "bg-blue-100 text-blue-800"
+																				: match.statusClass === "status-auto"
+																				? "bg-purple-100 text-purple-800"
+																				: "bg-slate-100 text-slate-800"
+																		}`}
+																	>
+																		{match.statusLabel}
+																	</span>
+																</header>
+																<div className="space-y-2">
+																	<div
+																		data-testid="participant-a"
+																		className={`flex items-center justify-between rounded p-2 ${
+																			match.isCompleted && match.winnerSide === "a"
+																				? "bg-green-100"
+																				: match.isCompleted && match.winnerSide && match.winnerSide !== "a"
+																				? "bg-red-50"
+																				: match.isInProgress
+																				? "bg-blue-50"
+																				: "bg-slate-50"
+																		}`}
+																	>
+																		<div className="flex-1">
+																			{match.participantA.type === "pair" ? (
+																				<>
+																					<div className="font-medium text-slate-900">
+																						{match.participantA.playerNames[0]} / {match.participantA.playerNames[1]}
+																					</div>
+																					{match.participantA.seed != null && (
+																						<span className="text-xs text-slate-500">
+																							シード {match.participantA.seed}
+																						</span>
+																					)}
+																				</>
+																			) : (
+																				<span className="text-slate-500">{match.participantA.label}</span>
+																			)}
+																		</div>
+																		<span className="ml-2 font-mono text-lg font-bold">
+																			{match.scoreALabel}
+																		</span>
+																	</div>
+																	<div
+																		data-testid="participant-b"
+																		className={`flex items-center justify-between rounded p-2 ${
+																			match.isCompleted && match.winnerSide === "b"
+																				? "bg-green-100"
+																				: match.isCompleted && match.winnerSide && match.winnerSide !== "b"
+																				? "bg-red-50"
+																				: match.isInProgress
+																				? "bg-blue-50"
+																				: "bg-slate-50"
+																		}`}
+																	>
+																		<div className="flex-1">
+																			{match.participantB.type === "pair" ? (
+																				<>
+																					<div className="font-medium text-slate-900">
+																						{match.participantB.playerNames[0]} / {match.participantB.playerNames[1]}
+																					</div>
+																					{match.participantB.seed != null && (
+																						<span className="text-xs text-slate-500">
+																							シード {match.participantB.seed}
+																						</span>
+																					)}
+																				</>
+																			) : (
+																				<span className="text-slate-500">{match.participantB.label}</span>
+																			)}
+																		</div>
+																		<span className="ml-2 font-mono text-lg font-bold">
+																			{match.scoreBLabel}
+																		</span>
+																	</div>
+																</div>
+															</article>
+														))}
+													</div>
+												)}
+											</section>
+										))}
+									</div>
+								</div>
+							</div>
+						)}
+					</div>
 				) : (
 					rounds.length === 0 ? (
 						<p className="text-slate-500">表示できるブラケットがありません。</p>

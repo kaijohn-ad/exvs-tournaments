@@ -2,9 +2,10 @@ import { generateUUID } from "~/utils/uuid";
 
 export interface TournamentData {
 	name: string;
-	format?: 'single-elimination' | 'ffa-2up';
+	format?: 'single-elimination' | 'double-elimination' | 'ffa-2up';
 	seedingMode?: 'random' | 'manual';
 	entryMode?: 'pair' | 'solo';
+	grandFinalsFormat?: 'single' | 'reset';
 }
 
 export interface TournamentImportData extends TournamentData {
@@ -15,7 +16,9 @@ export interface TournamentRecord extends TournamentData {
 	id: string;
 	eventId: string;
 	createdAt: string;
+	format: 'single-elimination' | 'double-elimination' | 'ffa-2up';
 	entryMode: 'pair' | 'solo';
+	grandFinalsFormat: 'single' | 'reset';
 }
 
 const store = new Map<string, Map<string, TournamentRecord>>();
@@ -43,6 +46,7 @@ export const createTournament = (eventId: string, data: TournamentData): Tournam
 		format: data.format || 'single-elimination',
 		seedingMode: data.seedingMode || 'random',
 		entryMode: data.entryMode || 'pair',
+		grandFinalsFormat: data.grandFinalsFormat || 'single',
 		createdAt: new Date().toISOString()
 	};
 
@@ -72,7 +76,8 @@ export const updateTournament = (
 		name: data.name.trim(),
 		format: data.format || existing.format,
 		seedingMode: data.seedingMode || existing.seedingMode,
-		entryMode: data.entryMode ?? existing.entryMode
+		entryMode: data.entryMode ?? existing.entryMode,
+		grandFinalsFormat: data.grandFinalsFormat ?? existing.grandFinalsFormat
 	};
 
 	getEventStore(eventId).set(tournamentId, updated);
@@ -108,6 +113,7 @@ export const setTournaments = (
 			format: entry.format || 'single-elimination',
 			seedingMode: entry.seedingMode || 'random',
 			entryMode: entry.entryMode || 'pair',
+			grandFinalsFormat: entry.grandFinalsFormat || 'single',
 			createdAt: new Date().toISOString()
 		};
 
@@ -152,7 +158,8 @@ export const updateTournamentById = (
 		name: data.name.trim(),
 		format: data.format || found.record.format,
 		seedingMode: data.seedingMode || found.record.seedingMode,
-		entryMode: data.entryMode ?? found.record.entryMode
+		entryMode: data.entryMode ?? found.record.entryMode,
+		grandFinalsFormat: data.grandFinalsFormat ?? found.record.grandFinalsFormat
 	};
 	store.get(found.eventId)!.set(tournamentId, updated);
 	return updated;
