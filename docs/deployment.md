@@ -74,8 +74,10 @@ npx wrangler d1 migrations apply exvs-tournaments-db --remote --env production
 
 Cloudflare Pages ダッシュボードの **Production環境** に以下の環境変数を設定：
 
-- `BASIC_AUTH_USER`: Admin username for Basic authentication
-- `BASIC_AUTH_PASS`: Admin password for Basic authentication
+- `BASIC_AUTH_USER`: Admin username for Basic authentication（`/admin` 配下へのアクセス保護用）
+- `BASIC_AUTH_PASSWORD`: Admin password for Basic authentication（`/admin` 配下へのアクセス保護用）
+
+**注意**: これらの環境変数は本番環境のみに設定してください。Preview環境や開発環境では未設定のままにすることで、Basic認証が無効化されます。これにより、ローカル開発やプレビュー環境でのテストが容易になります。
 
 The D1 database binding is automatically configured through `wrangler.toml`.
 
@@ -134,8 +136,10 @@ npx wrangler d1 migrations list exvs-tournaments-dev --remote --env preview
 
 Cloudflare Pages ダッシュボードの **Preview環境** に必要に応じて環境変数を設定：
 
-- `BASIC_AUTH_USER`: Admin username for Basic authentication（オプション）
-- `BASIC_AUTH_PASS`: Admin password for Basic authentication（オプション）
+- `BASIC_AUTH_USER`: Admin username for Basic authentication（オプション、未設定の場合は認証なし）
+- `BASIC_AUTH_PASSWORD`: Admin password for Basic authentication（オプション、未設定の場合は認証なし）
+
+**注意**: Preview環境では通常、これらの環境変数は設定しません。未設定の場合、Basic認証は無効化され、開発やテストが容易になります。
 
 ### マイグレーションディレクトリについて
 
@@ -393,9 +397,11 @@ npx wrangler d1 execute exvs-tournaments-dev --remote --env preview --command="S
 
 ### Authentication Issues
 
-1. Verify `BASIC_AUTH_USER` and `BASIC_AUTH_PASS` are set in Cloudflare Pages
+1. Verify `BASIC_AUTH_USER` and `BASIC_AUTH_PASSWORD` are set in Cloudflare Pages Production environment
 2. Test locally with environment variables:
    ```bash
    cd remix
-   BASIC_AUTH_USER=admin BASIC_AUTH_PASS=password npm run dev
+   BASIC_AUTH_USER=admin BASIC_AUTH_PASSWORD=password npm run dev
    ```
+3. Basic認証は `/admin` 配下のパスにのみ適用されます。他のパス（`/events` など）には影響しません。
+4. 環境変数が未設定の場合は認証が無効化されます。本番環境のみ設定してください。
