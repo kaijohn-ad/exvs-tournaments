@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { requireBasicAuthOnAdmin } from "./server";
+import { requireBasicAuthOnAdmin } from "./app/utils/basic-auth.server";
 
 describe("requireBasicAuthOnAdmin", () => {
 	test("環境変数未設定の場合は認証をスキップ（nullを返す）", () => {
