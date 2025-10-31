@@ -921,6 +921,22 @@ function KothBattleUI({
 		(slot) => slot.team_id === battle.team_b_id && slot.slot_index === kothState.bCurrentIndex,
 	);
 
+	// 大将まで到達していない場合の残ったプレイヤーを取得
+	const hasRemainingPlayers = kothState.finished && 
+		(kothState.aCurrentIndex < battle.slots_count - 1 || kothState.bCurrentIndex < battle.slots_count - 1);
+	
+	const remainingTeamASlots = hasRemainingPlayers && kothState.aCurrentIndex < battle.slots_count - 1
+		? slots.filter(
+				(slot) => slot.team_id === battle.team_a_id && slot.slot_index > kothState.aCurrentIndex
+			)
+		: [];
+	
+	const remainingTeamBSlots = hasRemainingPlayers && kothState.bCurrentIndex < battle.slots_count - 1
+		? slots.filter(
+				(slot) => slot.team_id === battle.team_b_id && slot.slot_index > kothState.bCurrentIndex
+			)
+		: [];
+
 	return (
 		<>
 			<article className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm" data-testid="koth-next-match-card">
@@ -1016,6 +1032,92 @@ function KothBattleUI({
 				) : !kothState.finished ? (
 					<div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-4 text-center text-sm text-slate-500">
 						両チームの現在の出場枠のラインナップが未設定です。ラインナップ編集ページで割り当ててください。
+					</div>
+				) : hasRemainingPlayers ? (
+					<div className="rounded-2xl border border-amber-200 bg-amber-50 px-6 py-5" data-testid="koth-remaining-players-message">
+						<div className="mb-3 flex items-center gap-2">
+							<span className="text-lg">🎮</span>
+							<h3 className="text-base font-semibold text-amber-900">残ったプレイヤーがいます</h3>
+						</div>
+						<p className="mb-4 text-sm text-amber-800">
+							この団体戦は終了しましたが、両チームとも大将まで到達していません。残ったプレイヤー同士で試合を楽しむことができます。
+						</p>
+						<div className="space-y-3">
+							{remainingTeamASlots.length > 0 && (
+								<div className="rounded-lg border border-amber-200 bg-white/60 px-4 py-3">
+									<p className="mb-2 text-xs font-semibold uppercase tracking-wide text-amber-700">
+										{getTeamName(battle.team_a_id)}の残ったプレイヤー
+									</p>
+									<div className="space-y-1 text-sm text-amber-900">
+										{remainingTeamASlots.map((slot, idx) => (
+											<div key={slot.id} className="flex items-center gap-2">
+												<span className="text-xs text-amber-600">
+													{slot.slot_index + 1}番手:
+												</span>
+												<span>
+													{slot.assignment_type === "pair" ? (
+														(() => {
+															const pair = slot.pair_id ? pairsById.get(slot.pair_id) : undefined;
+															const player1 = pair?.player1_id ? playersById.get(pair.player1_id) : undefined;
+															const player2 = pair?.player2_id ? playersById.get(pair.player2_id) : undefined;
+															return pair ? (
+																<>
+																	{player1?.name ?? "(Unknown)"} / {player2?.name ?? "(Unknown)"}
+																</>
+															) : (
+																<span className="text-rose-500">ペア情報が見つかりません</span>
+															);
+														})()
+													) : (
+														<>
+															{slot.player1_id ? playersById.get(slot.player1_id)?.name ?? "(Unknown)" : "-"} /{" "}
+															{slot.player2_id ? playersById.get(slot.player2_id)?.name ?? "(Unknown)" : "-"}
+														</>
+													)}
+												</span>
+											</div>
+										))}
+									</div>
+								</div>
+							)}
+							{remainingTeamBSlots.length > 0 && (
+								<div className="rounded-lg border border-amber-200 bg-white/60 px-4 py-3">
+									<p className="mb-2 text-xs font-semibold uppercase tracking-wide text-amber-700">
+										{getTeamName(battle.team_b_id)}の残ったプレイヤー
+									</p>
+									<div className="space-y-1 text-sm text-amber-900">
+										{remainingTeamBSlots.map((slot, idx) => (
+											<div key={slot.id} className="flex items-center gap-2">
+												<span className="text-xs text-amber-600">
+													{slot.slot_index + 1}番手:
+												</span>
+												<span>
+													{slot.assignment_type === "pair" ? (
+														(() => {
+															const pair = slot.pair_id ? pairsById.get(slot.pair_id) : undefined;
+															const player1 = pair?.player1_id ? playersById.get(pair.player1_id) : undefined;
+															const player2 = pair?.player2_id ? playersById.get(pair.player2_id) : undefined;
+															return pair ? (
+																<>
+																	{player1?.name ?? "(Unknown)"} / {player2?.name ?? "(Unknown)"}
+																</>
+															) : (
+																<span className="text-rose-500">ペア情報が見つかりません</span>
+															);
+														})()
+													) : (
+														<>
+															{slot.player1_id ? playersById.get(slot.player1_id)?.name ?? "(Unknown)" : "-"} /{" "}
+															{slot.player2_id ? playersById.get(slot.player2_id)?.name ?? "(Unknown)" : "-"}
+														</>
+													)}
+												</span>
+											</div>
+										))}
+									</div>
+								</div>
+							)}
+						</div>
 					</div>
 				) : null}
 			</article>

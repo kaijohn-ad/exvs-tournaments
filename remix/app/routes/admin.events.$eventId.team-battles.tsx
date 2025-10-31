@@ -16,6 +16,7 @@ import { useEffect, useMemo, useState } from "react";
 import { getDatabase, type DatabaseContext } from "~/repositories/database.server";
 import type { TeamBattleRecord } from "~/repositories/team-battles";
 import type { TeamRecord } from "~/repositories/teams";
+import { autoSplitPlayersIntoTeams } from "~/utils/team-battles/auto-split";
 
 const normalizeText = (value: FormDataEntryValue | null): string | undefined => {
 	if (value == null) return undefined;
@@ -84,7 +85,7 @@ type LoaderData = {
 	teams: TeamRecord[];
 };
 
-type MutationSource = "create" | "update" | "delete";
+type MutationSource = "create" | "update" | "delete" | "autoSplit";
 
 type ActionSuccess = {
 	type: "success";
@@ -398,6 +399,67 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 					message: "団体戦を削除しました。",
 				});
 			}
+
+			case "autoSplit": {
+				const teamAName = normalizeText(formData.get("team_a_name")) ?? "チームA";
+				const teamBName = normalizeText(formData.get("team_b_name")) ?? "チームB";
+				const createBattle = formData.get("create_battle") === "on";
+				const slotsCountRaw = normalizeText(formData.get("slots_count"));
+				const slotsCount = parseRequiredSlotsCount(slotsCountRaw);
+
+				try {
+					const result = await autoSplitPlayersIntoTeams(db, eventId, {
+						teamAName,
+						teamBName,
+					});
+
+					let message = `チーム「${teamAName}」(${result.teamAPlayerIds.length}名)とチーム「${teamBName}」(${result.teamBPlayerIds.length}名)を作成しました。`;
+
+					let battleId: string | undefined;
+
+					if (createBattle) {
+						if (slotsCount === null) {
+							return json<ActionError>(
+								{
+									type: "error",
+									source: "autoSplit",
+									message: "スロット数は1〜5の範囲で指定してください。",
+								},
+								{ status: 400 },
+							);
+						}
+
+						const battle = await db.teamBattles.createTeamBattle(eventId, {
+							team_a_id: result.teamA.id,
+							team_b_id: result.teamB.id,
+							slots_count: slotsCount,
+							format: "koth",
+							tiebreak: "off",
+						});
+
+						battleId = battle.id;
+						message += ` 団体戦（勝ち抜き戦）も作成しました。`;
+					}
+
+					return respondWithBattles({
+						type: "success",
+						source: "autoSplit",
+						message,
+					});
+				} catch (error) {
+					console.error("[team-battles:autoSplit] failed", error);
+					const errorMessage =
+						error instanceof Error ? error.message : "チーム分けの処理中にエラーが発生しました。";
+					return json<ActionError>(
+						{
+							type: "error",
+							source: "autoSplit",
+							message: errorMessage,
+						},
+						{ status: 400 },
+					);
+				}
+			}
 		}
 
 		return json<ActionError>(
@@ -432,6 +494,85 @@ function FlashMessage({ action }: { action: ActionData | undefined | null }) {
 		<div className={`rounded-lg border px-4 py-3 text-sm ${classes}`}>
 			{action.message}
 		</div>
+	);
+}
+
+function AutoSplitForm({ isSubmitting }: { isSubmitting: boolean }) {
+	const [teamAName, setTeamAName] = useState("チームA");
+	const [teamBName, setTeamBName] = useState("チームB");
+	const [createBattle, setCreateBattle] = useState(false);
+	const [slotsCount, setSlotsCount] = useState("3");
+
+	return (
+		<Form method="post" className="mt-4 grid gap-4">
+			<input type="hidden" name="_intent" value="autoSplit" />
+
+			<label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
+				<span>チームA名</span>
+				<input
+					type="text"
+					name="team_a_name"
+					value={teamAName}
+					onChange={(e) => setTeamAName(e.target.value)}
+					className="rounded-lg border border-slate-300 px-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+				/>
+			</label>
+
+			<label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
+				<span>チームB名</span>
+				<input
+					type="text"
+					name="team_b_name"
+					value={teamBName}
+					onChange={(e) => setTeamBName(e.target.value)}
+					className="rounded-lg border border-slate-300 px-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+				/>
+			</label>
+
+			<label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+				<input
+					type="checkbox"
+					name="create_battle"
+					checked={createBattle}
+					onChange={(e) => setCreateBattle(e.target.checked)}
+					className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-200"
+				/>
+				<span>同時に団体戦（勝ち抜き戦）を作成する</span>
+			</label>
+
+			{createBattle && (
+				<label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
+					<span>
+						スロット数 <span className="text-rose-500">*</span>
+					</span>
+					<select
+						name="slots_count"
+						value={slotsCount}
+						onChange={(e) => setSlotsCount(e.target.value)}
+						className="rounded-lg border border-slate-300 px-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+					>
+						{[1, 2, 3, 4, 5].map((value) => (
+							<option key={value} value={value}>
+								{value}
+							</option>
+						))}
+					</select>
+				</label>
+			)}
+
+			<div className="flex items-center">
+				<button
+					type="submit"
+					disabled={isSubmitting}
+					className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-blue-300"
+				>
+					チーム分けを実行
+				</button>
+			</div>
+			<p className="text-xs text-slate-500">
+				イベント内の全プレイヤーをランダムに2つのチームに均等に分割します。
+			</p>
+		</Form>
 	);
 }
 
@@ -699,7 +840,10 @@ export default function TeamBattlesRoute() {
 	const hasEnoughTeams = loaderData.teams.length >= 2;
 	const isSubmitting = navigation.state === "submitting";
 	const showCreateError = actionData?.source === "create" && actionData.type === "error";
-	const showListMessage = actionData && !(actionData.source === "create" && actionData.type === "error");
+	const showListMessage =
+		actionData &&
+		!(actionData.source === "create" && actionData.type === "error") &&
+		actionData.source !== "autoSplit";
 
 	return (
 		<div className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-6 py-10">
@@ -720,6 +864,12 @@ export default function TeamBattlesRoute() {
 					← 管理トップに戻る
 				</Link>
 			</header>
+
+			<section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+				<h2 className="text-lg font-semibold text-slate-900">自動チーム分け</h2>
+				{actionData?.source === "autoSplit" ? <FlashMessage action={actionData} /> : null}
+				<AutoSplitForm isSubmitting={isSubmitting} />
+			</section>
 
 			<section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
 				<h2 className="text-lg font-semibold text-slate-900">団体戦を作成</h2>
