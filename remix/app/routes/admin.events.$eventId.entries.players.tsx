@@ -12,6 +12,7 @@ import {
 	useLoaderData,
 	useNavigation,
 	useRouteError,
+	isRouteErrorResponse,
 } from "@remix-run/react";
 import { useEffect, useMemo, useState } from "react";
 import { getDatabase } from "~/repositories/database.server";
@@ -80,6 +81,26 @@ export async function loader({ params, context }: LoaderFunctionArgs) {
 			dbExists: !!context.db,
 			cloudflareEnv: context.cloudflare?.env ? Object.keys(context.cloudflare.env) : "undefined"
 		});
+
+		// データベース接続エラーの場合、より明確なエラーメッセージを返す
+		if (error instanceof Error) {
+			if (error.message.includes("D1 database is not available")) {
+				throw new Response(
+					"D1データベースが利用できません。データベースの設定を確認してください。",
+					{ status: 503 }
+				);
+			}
+
+			// D1スキーマ未初期化エラー（no such table）を検知
+			if (error.message.includes("no such table") || error.message.includes("no such column")) {
+				throw new Response(
+					"データベースが初期化されていません。マイグレーションを実行してください。",
+					{ status: 503 }
+				);
+			}
+		}
+
+		// その他のエラーはそのまま再スロー
 		throw error;
 	}
 }
@@ -385,10 +406,7 @@ export default function PlayersRoute() {
 	const { players, playersJson } = usePlayersState(loaderData, actionData);
 
 	const [importPayload, setImportPayload] = useState<string>("");
-	const downloadUrl = useMemo(() => {
-		const blob = new Blob([playersJson], { type: "application/json" });
-		return URL.createObjectURL(blob);
-	}, [playersJson]);
+	const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
 
 	useEffect(() => {
 		const nextPayload =
@@ -398,12 +416,24 @@ export default function PlayersRoute() {
 		setImportPayload(nextPayload);
 	}, [actionData]);
 
-	useEffect(
-		() => () => {
-			URL.revokeObjectURL(downloadUrl);
-		},
-		[downloadUrl],
-	);
+	useEffect(() => {
+		// SSR時は実行しない（クライアント側でのみ実行）
+		if (typeof window === "undefined" || typeof URL === "undefined" || typeof Blob === "undefined") {
+			return;
+		}
+
+		try {
+			const blob = new Blob([playersJson], { type: "application/json" });
+			const url = URL.createObjectURL(blob);
+			setDownloadUrl(url);
+			return () => {
+				URL.revokeObjectURL(url);
+			};
+		} catch (error) {
+			// Blob作成に失敗した場合は何もしない（SSR環境など）
+			console.warn("Failed to create blob URL:", error);
+		}
+	}, [playersJson]);
 
 	const isSubmitting = navigation.state === "submitting";
 
@@ -595,20 +625,68 @@ export default function PlayersRoute() {
 
 export function ErrorBoundary() {
 	const error = useRouteError();
-	console.error(error);
+	console.error("Players route error:", error);
+
+	const isRouteError = isRouteErrorResponse(error);
+	const errorMessage =
+		error instanceof Error
+			? error.message
+			: isRouteError
+				? error.statusText || "不明なエラー"
+				: "不明なエラー";
+	const errorDetails =
+		error instanceof Error && error.stack
+			? error.stack
+			: isRouteError
+				? `Status: ${error.status}`
+				: String(error);
+
+	// 開発環境またはプレビュー環境では詳細を表示
+	// サーバーサイドとクライアントサイドの両方で動作するように判定を改善
+	// プレビュー環境（develop.exvs-tournaments.pages.devなど）では常に詳細を表示
+	const isDevelopment =
+		(typeof window !== "undefined" &&
+			window.location &&
+			(window.location.hostname === "localhost" ||
+				window.location.hostname.includes("127.0.0.1") ||
+				window.location.hostname.includes("dev") ||
+				window.location.hostname.includes("preview") ||
+				window.location.hostname.includes("pages.dev"))) ||
+		(typeof process !== "undefined" &&
+			(process.env.NODE_ENV === "development" ||
+				process.env.ENVIRONMENT_STAGE === "preview"));
+
 	return (
-		<div className="mx-auto max-w-2xl px-6 py-12 text-center">
-			<h1 className="text-2xl font-semibold text-rose-600">エラーが発生しました</h1>
-			<p className="mt-4 text-sm text-slate-600">
-				プレイヤー管理の読み込み中に問題が発生しました。管理トップへ戻ってから再度お試しください。
-			</p>
-			<div className="mt-6">
-				<Link
-					to="/admin"
-					className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100"
-				>
-					管理トップへ戻る
-				</Link>
+		<div className="mx-auto max-w-2xl px-6 py-12">
+			<div className="text-center">
+				<h1 className="text-2xl font-semibold text-rose-600">エラーが発生しました</h1>
+				<p className="mt-4 text-sm text-slate-600">
+					プレイヤー管理の読み込み中に問題が発生しました。管理トップへ戻ってから再度お試しください。
+				</p>
+				{isDevelopment && (
+					<div className="mt-6 rounded-lg border border-rose-200 bg-rose-50 p-4 text-left">
+						<p className="text-sm font-semibold text-rose-800">エラー詳細:</p>
+						<p className="mt-2 text-xs text-rose-700">{errorMessage}</p>
+						{errorDetails && (
+							<details className="mt-2">
+								<summary className="cursor-pointer text-xs text-rose-600">
+									スタックトレースを表示
+								</summary>
+								<pre className="mt-2 overflow-auto rounded bg-rose-100 p-2 text-xs text-rose-800">
+									{errorDetails}
+								</pre>
+							</details>
+						)}
+					</div>
+				)}
+				<div className="mt-6">
+					<Link
+						to="/admin"
+						className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100"
+					>
+						管理トップへ戻る
+					</Link>
+				</div>
 			</div>
 		</div>
 	);

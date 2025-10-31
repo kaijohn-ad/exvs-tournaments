@@ -7,6 +7,7 @@ import {
 import {
 	Form,
 	Link,
+	Outlet,
 	useActionData,
 	useLoaderData,
 	useNavigation,
@@ -15,6 +16,7 @@ import { useEffect, useMemo, useState } from "react";
 import { getDatabase, type DatabaseContext } from "~/repositories/database.server";
 import type { TeamBattleRecord } from "~/repositories/team-battles";
 import type { TeamRecord } from "~/repositories/teams";
+import { autoSplitPlayersIntoTeams } from "~/utils/team-battles/auto-split";
 
 const normalizeText = (value: FormDataEntryValue | null): string | undefined => {
 	if (value == null) return undefined;
@@ -60,6 +62,14 @@ const resultLabelMap: Record<string, string> = {
 	draw: "引き分け",
 };
 
+const formatLabelMap: Record<string, string> = {
+	waseda: "早稲田式",
+	koth: "勝ち抜き戦",
+};
+
+const getFormatLabel = (value: string | null | undefined) =>
+	value ? formatLabelMap[value] ?? value : "早稲田式";
+
 const getStatusLabel = (value: string | null | undefined) =>
 	statusLabelMap[value ?? "pending"] ?? value ?? "";
 
@@ -75,7 +85,7 @@ type LoaderData = {
 	teams: TeamRecord[];
 };
 
-type MutationSource = "create" | "update" | "delete";
+type MutationSource = "create" | "update" | "delete" | "autoSplit";
 
 type ActionSuccess = {
 	type: "success";
@@ -161,7 +171,8 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 				const teamBId = normalizeText(formData.get("team_b_id"));
 				const slotsCountRaw = normalizeText(formData.get("slots_count"));
 				const format = normalizeText(formData.get("format")) ?? "waseda";
-				const tiebreak = normalizeText(formData.get("tiebreak")) ?? "off";
+				const tiebreakRaw = normalizeText(formData.get("tiebreak"));
+				const tiebreak = format === "koth" ? "off" : (tiebreakRaw ?? "off");
 
 				if (!teamAId) {
 					return json<ActionError>(
@@ -248,7 +259,8 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 				const teamBId = normalizeText(formData.get("team_b_id"));
 				const slotsCountRaw = normalizeText(formData.get("slots_count"));
 				const format = normalizeText(formData.get("format"));
-				const tiebreak = normalizeText(formData.get("tiebreak"));
+				const tiebreakRaw = normalizeText(formData.get("tiebreak"));
+				const tiebreak = format === "koth" ? "off" : (tiebreakRaw ?? undefined);
 
 				if (!battleId) {
 					return json<ActionError>(
@@ -387,6 +399,67 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 					message: "団体戦を削除しました。",
 				});
 			}
+
+			case "autoSplit": {
+				const teamAName = normalizeText(formData.get("team_a_name")) ?? "チームA";
+				const teamBName = normalizeText(formData.get("team_b_name")) ?? "チームB";
+				const createBattle = formData.get("create_battle") === "on";
+				const slotsCountRaw = normalizeText(formData.get("slots_count"));
+				const slotsCount = parseRequiredSlotsCount(slotsCountRaw);
+
+				try {
+					const result = await autoSplitPlayersIntoTeams(db, eventId, {
+						teamAName,
+						teamBName,
+					});
+
+					let message = `チーム「${teamAName}」(${result.teamAPlayerIds.length}名)とチーム「${teamBName}」(${result.teamBPlayerIds.length}名)を作成しました。`;
+
+					let battleId: string | undefined;
+
+					if (createBattle) {
+						if (slotsCount === null) {
+							return json<ActionError>(
+								{
+									type: "error",
+									source: "autoSplit",
+									message: "スロット数は1〜5の範囲で指定してください。",
+								},
+								{ status: 400 },
+							);
+						}
+
+						const battle = await db.teamBattles.createTeamBattle(eventId, {
+							team_a_id: result.teamA.id,
+							team_b_id: result.teamB.id,
+							slots_count: slotsCount,
+							format: "koth",
+							tiebreak: "off",
+						});
+
+						battleId = battle.id;
+						message += ` 団体戦（勝ち抜き戦）も作成しました。`;
+					}
+
+					return respondWithBattles({
+						type: "success",
+						source: "autoSplit",
+						message,
+					});
+				} catch (error) {
+					console.error("[team-battles:autoSplit] failed", error);
+					const errorMessage =
+						error instanceof Error ? error.message : "チーム分けの処理中にエラーが発生しました。";
+					return json<ActionError>(
+						{
+							type: "error",
+							source: "autoSplit",
+							message: errorMessage,
+						},
+						{ status: 400 },
+					);
+				}
+			}
 		}
 
 		return json<ActionError>(
@@ -424,6 +497,196 @@ function FlashMessage({ action }: { action: ActionData | undefined | null }) {
 	);
 }
 
+function AutoSplitForm({ isSubmitting }: { isSubmitting: boolean }) {
+	const [teamAName, setTeamAName] = useState("チームA");
+	const [teamBName, setTeamBName] = useState("チームB");
+	const [createBattle, setCreateBattle] = useState(false);
+	const [slotsCount, setSlotsCount] = useState("3");
+
+	return (
+		<Form method="post" className="mt-4 grid gap-4">
+			<input type="hidden" name="_intent" value="autoSplit" />
+
+			<label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
+				<span>チームA名</span>
+				<input
+					type="text"
+					name="team_a_name"
+					value={teamAName}
+					onChange={(e) => setTeamAName(e.target.value)}
+					className="rounded-lg border border-slate-300 px-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+				/>
+			</label>
+
+			<label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
+				<span>チームB名</span>
+				<input
+					type="text"
+					name="team_b_name"
+					value={teamBName}
+					onChange={(e) => setTeamBName(e.target.value)}
+					className="rounded-lg border border-slate-300 px-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+				/>
+			</label>
+
+			<label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+				<input
+					type="checkbox"
+					name="create_battle"
+					checked={createBattle}
+					onChange={(e) => setCreateBattle(e.target.checked)}
+					className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-200"
+				/>
+				<span>同時に団体戦（勝ち抜き戦）を作成する</span>
+			</label>
+
+			{createBattle && (
+				<label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
+					<span>
+						スロット数 <span className="text-rose-500">*</span>
+					</span>
+					<select
+						name="slots_count"
+						value={slotsCount}
+						onChange={(e) => setSlotsCount(e.target.value)}
+						className="rounded-lg border border-slate-300 px-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+					>
+						{[1, 2, 3, 4, 5].map((value) => (
+							<option key={value} value={value}>
+								{value}
+							</option>
+						))}
+					</select>
+				</label>
+			)}
+
+			<div className="flex items-center">
+				<button
+					type="submit"
+					disabled={isSubmitting}
+					className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-blue-300"
+				>
+					チーム分けを実行
+				</button>
+			</div>
+			<p className="text-xs text-slate-500">
+				イベント内の全プレイヤーをランダムに2つのチームに均等に分割します。
+			</p>
+		</Form>
+	);
+}
+
+function CreateBattleForm({
+	teams,
+	isSubmitting,
+}: {
+	teams: TeamRecord[];
+	isSubmitting: boolean;
+}) {
+	const [format, setFormat] = useState("waseda");
+
+	return (
+		<Form method="post" className="mt-4 grid gap-4">
+			<input type="hidden" name="_intent" value="create" />
+
+			<label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
+				<span>
+					チームA <span className="text-rose-500">*</span>
+				</span>
+				<select
+					name="team_a_id"
+					required
+					className="rounded-lg border border-slate-300 px-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+				>
+					<option value="">選択してください</option>
+					{teams.map((team) => (
+						<option key={team.id} value={team.id}>
+							{team.name}
+						</option>
+					))}
+				</select>
+			</label>
+
+			<label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
+				<span>
+					チームB <span className="text-rose-500">*</span>
+				</span>
+				<select
+					name="team_b_id"
+					required
+					className="rounded-lg border border-slate-300 px-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+				>
+					<option value="">選択してください</option>
+					{teams.map((team) => (
+						<option key={team.id} value={team.id}>
+							{team.name}
+						</option>
+					))}
+				</select>
+			</label>
+
+			<label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
+				<span>
+					スロット数 <span className="text-rose-500">*</span>
+				</span>
+				<select
+					name="slots_count"
+					defaultValue="3"
+					className="rounded-lg border border-slate-300 px-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+				>
+					{[1, 2, 3, 4, 5].map((value) => (
+						<option key={value} value={value}>
+							{value}
+						</option>
+					))}
+				</select>
+			</label>
+
+			<label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
+				<span>形式</span>
+				<select
+					name="format"
+					value={format}
+					onChange={(e) => setFormat(e.target.value)}
+					data-testid="format-select"
+					className="rounded-lg border border-slate-300 px-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+				>
+					<option value="waseda">早稲田式</option>
+					<option value="koth">勝ち抜き戦</option>
+				</select>
+			</label>
+
+			<label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
+				<span>タイブレーク</span>
+				<select
+					name="tiebreak"
+					defaultValue="off"
+					disabled={format === "koth"}
+					data-testid="tiebreak-select"
+					className="rounded-lg border border-slate-300 px-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+				>
+					<option value="off">なし</option>
+					<option value="representative">代表戦</option>
+				</select>
+				{format === "koth" && (
+					<p className="text-xs text-slate-500">勝ち抜き戦ではタイブレークは使用できません</p>
+				)}
+			</label>
+
+			<div className="flex items-center">
+				<button
+					type="submit"
+					disabled={isSubmitting}
+					data-testid="create-battle-button"
+					className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-blue-300"
+				>
+					作成
+				</button>
+			</div>
+		</Form>
+	);
+}
+
 function BattleEditForm({
 	battle,
 	teams,
@@ -435,6 +698,8 @@ function BattleEditForm({
 	onCancel: () => void;
 	isSubmitting: boolean;
 }) {
+	const [format, setFormat] = useState(battle.format);
+
 	return (
 		<Form method="post" className="grid gap-4">
 			<input type="hidden" name="_intent" value="update" />
@@ -497,10 +762,13 @@ function BattleEditForm({
 				<span>形式</span>
 				<select
 					name="format"
-					defaultValue={battle.format}
+					value={format}
+					onChange={(e) => setFormat(e.target.value)}
+					data-testid="format-select"
 					className="rounded-lg border border-slate-300 px-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
 				>
 					<option value="waseda">早稲田式</option>
+					<option value="koth">勝ち抜き戦</option>
 				</select>
 			</label>
 
@@ -509,11 +777,16 @@ function BattleEditForm({
 				<select
 					name="tiebreak"
 					defaultValue={battle.tiebreak}
-					className="rounded-lg border border-slate-300 px-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+					disabled={format === "koth"}
+					data-testid="tiebreak-select"
+					className="rounded-lg border border-slate-300 px-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
 				>
 					<option value="off">なし</option>
 					<option value="representative">代表戦</option>
 				</select>
+				{format === "koth" && (
+					<p className="text-xs text-slate-500">勝ち抜き戦ではタイブレークは使用できません</p>
+				)}
 			</label>
 
 			<div className="flex flex-wrap items-center gap-3">
@@ -567,7 +840,10 @@ export default function TeamBattlesRoute() {
 	const hasEnoughTeams = loaderData.teams.length >= 2;
 	const isSubmitting = navigation.state === "submitting";
 	const showCreateError = actionData?.source === "create" && actionData.type === "error";
-	const showListMessage = actionData && !(actionData.source === "create" && actionData.type === "error");
+	const showListMessage =
+		actionData &&
+		!(actionData.source === "create" && actionData.type === "error") &&
+		actionData.source !== "autoSplit";
 
 	return (
 		<div className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-6 py-10">
@@ -590,98 +866,16 @@ export default function TeamBattlesRoute() {
 			</header>
 
 			<section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+				<h2 className="text-lg font-semibold text-slate-900">自動チーム分け</h2>
+				{actionData?.source === "autoSplit" ? <FlashMessage action={actionData} /> : null}
+				<AutoSplitForm isSubmitting={isSubmitting} />
+			</section>
+
+			<section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
 				<h2 className="text-lg font-semibold text-slate-900">団体戦を作成</h2>
 				{showCreateError ? <FlashMessage action={actionData} /> : null}
 				{hasEnoughTeams ? (
-					<Form method="post" className="mt-4 grid gap-4">
-						<input type="hidden" name="_intent" value="create" />
-
-						<label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
-							<span>
-								チームA <span className="text-rose-500">*</span>
-							</span>
-							<select
-								name="team_a_id"
-								required
-								className="rounded-lg border border-slate-300 px-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-							>
-								<option value="">選択してください</option>
-								{loaderData.teams.map((team) => (
-									<option key={team.id} value={team.id}>
-										{team.name}
-									</option>
-								))}
-							</select>
-						</label>
-
-						<label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
-							<span>
-								チームB <span className="text-rose-500">*</span>
-							</span>
-							<select
-								name="team_b_id"
-								required
-								className="rounded-lg border border-slate-300 px-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-							>
-								<option value="">選択してください</option>
-								{loaderData.teams.map((team) => (
-									<option key={team.id} value={team.id}>
-										{team.name}
-									</option>
-								))}
-							</select>
-						</label>
-
-						<label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
-							<span>
-								スロット数 <span className="text-rose-500">*</span>
-							</span>
-							<select
-								name="slots_count"
-								defaultValue="3"
-								className="rounded-lg border border-slate-300 px-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-							>
-								{[1, 2, 3, 4, 5].map((value) => (
-									<option key={value} value={value}>
-										{value}
-									</option>
-								))}
-							</select>
-						</label>
-
-						<label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
-							<span>形式</span>
-							<select
-								name="format"
-								defaultValue="waseda"
-								className="rounded-lg border border-slate-300 px-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-							>
-								<option value="waseda">早稲田式</option>
-							</select>
-						</label>
-
-						<label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
-							<span>タイブレーク</span>
-							<select
-								name="tiebreak"
-								defaultValue="off"
-								className="rounded-lg border border-slate-300 px-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-							>
-								<option value="off">なし</option>
-								<option value="representative">代表戦</option>
-							</select>
-						</label>
-
-						<div className="flex items-center">
-							<button
-								type="submit"
-								disabled={isSubmitting}
-								className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-blue-300"
-							>
-								作成
-							</button>
-						</div>
-					</Form>
+					<CreateBattleForm teams={loaderData.teams} isSubmitting={isSubmitting} />
 				) : (
 					<p className="mt-4 text-sm text-slate-500">
 						団体戦を作成するには、少なくとも2つのチームが必要です。
@@ -725,6 +919,7 @@ export default function TeamBattlesRoute() {
 												<h3 className="text-lg font-semibold text-slate-900">
 													<Link
 														to={`/admin/events/${loaderData.eventId}/team-battles/${battle.id}`}
+														reloadDocument
 														className="transition hover:text-blue-600"
 													>
 														{getTeamName(battle.team_a_id)} vs {getTeamName(battle.team_b_id)}
@@ -732,7 +927,7 @@ export default function TeamBattlesRoute() {
 												</h3>
 												<div className="flex flex-wrap gap-3 text-sm text-slate-500">
 													<span>スロット数: {battle.slots_count}</span>
-													<span>形式: {battle.format}</span>
+													<span>形式: {getFormatLabel(battle.format)}</span>
 													{battle.tiebreak !== "off" ? <span>タイブレーク: {battle.tiebreak}</span> : null}
 												</div>
 												<div className="flex flex-wrap items-center gap-3">
@@ -775,12 +970,14 @@ export default function TeamBattlesRoute() {
 												<div className="flex flex-col gap-2 text-sm text-blue-600">
 													<Link
 														to={`/admin/events/${loaderData.eventId}/team-battles/${battle.id}`}
+														reloadDocument
 														className="transition hover:text-blue-500"
 													>
 														進行管理 →
 													</Link>
 													<Link
 														to={`/admin/events/${loaderData.eventId}/team-battles/${battle.id}/lineup`}
+														reloadDocument
 														className="transition hover:text-blue-500"
 													>
 														ラインナップ編集 →
@@ -805,6 +1002,8 @@ export default function TeamBattlesRoute() {
 					※ ラインナップ編集は各団体戦カードの「ラインナップ編集」から行えます。
 				</p>
 			</section>
+
+			<Outlet />
 		</div>
 	);
 }

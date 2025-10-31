@@ -16,6 +16,7 @@ D1(SQLite)前提の論理モデル。型は概念表記。
 
 - Tournament（2on2シングルエリミ）
   - id, eventId, name, createdAt
+  - entryMode: 'pair'|'solo'（参加モード: ペア参加/個別参加）
 
 - BracketMatch
   - id, tournamentId, round, position
@@ -52,6 +53,14 @@ D1(SQLite)前提の論理モデル。型は概念表記。
   - id, matchId, playerId, teamId?, pairId?, role?('slot0'..)
   - won:boolean
 
+- TournamentParticipant（トーナメント参加者）
+  - id, tournamentId, participantType: 'pair'|'solo'
+  - pairId?（participantType='pair'の場合のみ）
+  - playerId?（participantType='solo'の場合のみ）
+  - seed?（ペア参加時のみ）
+  - note?, status: 'active'|'removed', createdAt
+  - 制約: (tournamentId, pairId) ユニーク、(tournamentId, playerId) ユニーク
+
 - PlayerStats（集計スナップショット）
   - id, scope:'event'|'tournament'|'teamBattle'|'global', scopeId?, playerId
   - wins, losses, lastUpdatedAt
@@ -67,6 +76,9 @@ D1(SQLite)前提の論理モデル。型は概念表記。
 - TeamBattleSlotは、teamBattleId×teamId×slotIndexでユニーク。
 - BracketMatchはtournamentId×round×positionでユニーク。
 - MatchParticipationは(matchId, playerId)でユニーク。
+- TournamentParticipantは(tournamentId, pairId)と(tournamentId, playerId)でそれぞれユニーク。
+- TournamentのentryMode変更は、参加者が0件でないと不可。
+- BracketMatch生成はentryMode='pair'のトーナメントでのみ可能（soloモードでは不可）。
 
 ## インデックス例
 - Player(name)

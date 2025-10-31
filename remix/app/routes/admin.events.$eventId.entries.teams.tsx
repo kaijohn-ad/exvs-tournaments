@@ -333,17 +333,26 @@ export default function TeamsRoute() {
 	const [editorOpen, setEditorOpen] = useState(false);
 	const [editorPayload, setEditorPayload] = useState(teamsJson);
 	const [editorError, setEditorError] = useState<string | null>(null);
-
-	const downloadUrl = useMemo(() => {
-		const blob = new Blob([teamsJson], { type: "application/json" });
-		return URL.createObjectURL(blob);
-	}, [teamsJson]);
+	const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
 
 	useEffect(() => {
-		return () => {
-			URL.revokeObjectURL(downloadUrl);
-		};
-	}, [downloadUrl]);
+		// SSR時は実行しない（クライアント側でのみ実行）
+		if (typeof window === "undefined" || typeof URL === "undefined" || typeof Blob === "undefined") {
+			return;
+		}
+
+		try {
+			const blob = new Blob([teamsJson], { type: "application/json" });
+			const url = URL.createObjectURL(blob);
+			setDownloadUrl(url);
+			return () => {
+				URL.revokeObjectURL(url);
+			};
+		} catch (error) {
+			// Blob作成に失敗した場合は何もしない（SSR環境など）
+			console.warn("Failed to create blob URL:", error);
+		}
+	}, [teamsJson]);
 
 	useEffect(() => {
 		if (actionData?.type === "error") {

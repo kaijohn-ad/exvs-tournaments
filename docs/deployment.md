@@ -30,6 +30,13 @@ Cloudflare Pages では、Productionブランチへのデプロイは自動的�
 
 この環境変数は `wrangler.toml` と `wrangler.json` の両方に設定されており、Cloudflare Pages のデプロイ時に自動的に適用されます。データベース接続時には、この環境ステージ情報がJSONログとして出力され、接続状況の監視に使用されます。
 
+### データソース選択（Preview/開発）
+
+- 本番環境では常に D1 を使用します（必須）。
+- Preview/開発環境では、D1 バインディングが存在する場合は既定で D1 を使用します。
+- メモリストアを明示的に使用したい場合は、`USE_MEMORY_STORE=true` を設定してください。
+- D1 バインディングが存在しない場合は自動的にメモリストアへフォールバックします。
+
 ## Production D1 Database Setup
 
 ### 1. Create Production Database
@@ -191,18 +198,48 @@ The project uses GitHub Actions for automated deployment:
   - Unit tests with `npm run test`
   - 手動実行可能（`workflow_dispatch`）
 
-- **Deploy Workflow** (`.github/workflows/deploy.yml`): Runs on master branch pushes
-  - Runs all CI checks
-  - Builds the application
-  - Deploys to Cloudflare Pages
+- **Deploy Workflow** (`.github/workflows/deploy.yml`): 
+  - **Production deployments**: Runs on `master` branch pushes
+    - Runs all CI checks (type check, tests)
+    - Builds the application
+    - Deploys to Cloudflare Pages Production environment
+    - Uses Production D1 database (`exvs-tournaments-db`)
+  - **Preview deployments**: Runs on Pull Requests (opened, synchronize, reopened)
+    - Runs all CI checks (type check, tests)
+    - Builds the application
+    - Deploys to Cloudflare Pages Preview environment
+    - Uses Preview D1 database (`exvs-tournaments-dev`)
+    - Automatically comments preview URL on the PR
   - 手動実行可能（`workflow_dispatch`）
+
+### PR Preview機能
+
+プルリクエストが作成・更新されると、自動的にプレビュー環境がデプロイされます：
+
+1. **自動デプロイ**: PRが作成・更新されると、ワークフローが自動実行されます
+2. **プレビューURL**: デプロイ完了後、プレビューURLがPRに自動コメントされます
+3. **環境分離**: プレビュー環境は開発用D1データベース（`exvs-tournaments-dev`）を使用します
+4. **並列実行制御**: 同じブランチでの同時実行は最新のもののみが実行され、古い実行は自動キャンセルされます
+
+プレビュー環境のURL形式は以下の通りです：
+```
+https://<branch-name>.exvs-tournaments.pages.dev
+```
 
 ### Required GitHub Secrets
 
 Configure these secrets in your GitHub repository settings:
 
-- `CLOUDFLARE_API_TOKEN`: API token with Pages and Workers permissions
+- `CLOUDFLARE_API_TOKEN`: API token with Pages and Workers permissions (プレビューURL取得のため、Pages読み取り権限が必要)
 - `CLOUDFLARE_ACCOUNT_ID`: Your Cloudflare account ID
+
+### Required GitHub Permissions
+
+デプロイワークフローは以下の権限を使用します：
+
+- `contents: read`: リポジトリの読み取り
+- `deployments: write`: GitHub Deployments APIへの書き込み
+- `pull-requests: write`: PRへのコメント投稿
 
 ## Rollback Procedure
 
@@ -292,6 +329,11 @@ npx wrangler d1 migrations apply exvs-tournaments-dev --remote --env preview
 
 2. **環境別マイグレーション適用順序**:
    - ローカル開発環境 → Preview環境 → Production環境
+
+### 最近のマイグレーション
+
+- **0003_add_deleted_at_to_pairs.sql**: `pairs`テーブルに`deleted_at`カラムを追加し、ペアの論理削除を実装。削除済みペアは一覧に表示されず、参照も制限されます。
+- **0005_add_ffa_groups.sql**: FFA 2-up形式のトーナメントをサポートするため、`ffa_groups`テーブルを追加し、`tournaments`テーブルの`format`カラムに`'ffa-2up'`オプションを追加。4人1グループで上位2名が勝ち上がる形式をサポートします。
 
 ## Monitoring and Logs
 

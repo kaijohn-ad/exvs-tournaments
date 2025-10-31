@@ -10,7 +10,9 @@ import * as teamBattlesMemory from "./team-battles";
 import * as teamBattleSlotsMemory from "./team-battle-slots";
 import * as matchesMemory from "./matches";
 import * as bracketMatchesMemory from "./bracket-matches";
+import * as ffaGroupsMemory from "./ffa-groups";
 import * as playerStatsMemory from "./player-stats";
+import * as tournamentParticipantsMemory from "./tournament-participants";
 import { createEventsRepositoryD1 } from "./events-d1";
 import { createPlayersRepositoryD1 } from "./players-d1";
 import { createTournamentsRepositoryD1 } from "./tournaments-d1";
@@ -20,7 +22,9 @@ import { createTeamBattlesRepositoryD1 } from "./team-battles-d1";
 import { createTeamBattleSlotsRepositoryD1 } from "./team-battle-slots-d1";
 import { createMatchesRepositoryD1 } from "./matches-d1";
 import { createBracketMatchesRepositoryD1 } from "./bracket-matches-d1";
+import { createFfaGroupsRepositoryD1 } from "./ffa-groups-d1";
 import { createPlayerStatsRepositoryD1 } from "./player-stats-d1";
+import { createTournamentParticipantsRepositoryD1 } from "./tournament-participants-d1";
 
 export interface DatabaseContext {
 	events: {
@@ -29,6 +33,7 @@ export interface DatabaseContext {
 		ensureEvent(eventId: string): Promise<eventsMemory.EventRecord>;
 		updateEvent(eventId: string, data: eventsMemory.EventData): Promise<eventsMemory.EventRecord>;
 		deleteEvent(eventId: string): Promise<void>;
+		findEventBySlug(slug: string): Promise<eventsMemory.EventRecord | null>;
 	};
 	players: {
 		listPlayers(eventId: string): Promise<playersMemory.PlayerRecord[]>;
@@ -78,6 +83,7 @@ export interface DatabaseContext {
 		deleteTeam(eventId: string, teamId: string): Promise<void>;
 		setTeams(eventId: string, teams: teamsMemory.TeamImportData[]): Promise<teamsMemory.TeamRecord[]>;
 		addTeamMember(teamId: string, playerId: string): Promise<void>;
+		listTeamMemberIds(teamId: string): Promise<string[]>;
 	};
 	teamBattles: {
 		listTeamBattles(eventId: string): Promise<teamBattlesMemory.TeamBattleRecord[]>;
@@ -120,6 +126,27 @@ export interface DatabaseContext {
 			matches: bracketMatchesMemory.BracketMatchImportData[]
 		): Promise<bracketMatchesMemory.BracketMatchRecord[]>;
 		deleteBracketMatches(tournamentId: string): Promise<void>;
+	};
+	ffaGroups: {
+		listFfaGroups(tournamentId: string): Promise<ffaGroupsMemory.FfaGroupRecord[]>;
+		createFfaGroup(
+			tournamentId: string,
+			data: ffaGroupsMemory.FfaGroupImportData
+		): Promise<ffaGroupsMemory.FfaGroupRecord>;
+		ensureFfaGroup(
+			tournamentId: string,
+			groupId: string
+		): Promise<ffaGroupsMemory.FfaGroupRecord>;
+		updateFfaGroup(
+			tournamentId: string,
+			groupId: string,
+			data: ffaGroupsMemory.FfaGroupUpdateData
+		): Promise<ffaGroupsMemory.FfaGroupRecord>;
+		setFfaGroups(
+			tournamentId: string,
+			groups: ffaGroupsMemory.FfaGroupImportData[]
+		): Promise<ffaGroupsMemory.FfaGroupRecord[]>;
+		clearFfaGroups(tournamentId: string): Promise<void>;
 	};
 	teamBattleSlots: {
 		listTeamBattleSlots(battleId: string): Promise<teamBattleSlotsMemory.TeamBattleSlotRecord[]>;
@@ -203,6 +230,36 @@ export interface DatabaseContext {
 			stats: playerStatsMemory.PlayerStatsImportData[]
 		): Promise<playerStatsMemory.PlayerStatsRecord[]>;
 	};
+	tournamentParticipants: {
+		listParticipants(tournamentId: string): Promise<tournamentParticipantsMemory.TournamentParticipantRecord[]>;
+		count(tournamentId: string): Promise<number>;
+		addPair(
+			tournamentId: string,
+			pairId: string,
+			opts?: { seed?: number | null; note?: string | null }
+		): Promise<tournamentParticipantsMemory.TournamentParticipantRecord>;
+		addSolo(
+			tournamentId: string,
+			playerId: string,
+			opts?: { note?: string | null }
+		): Promise<tournamentParticipantsMemory.TournamentParticipantRecord>;
+		removeById(tournamentId: string, participantId: string): Promise<void>;
+		removeAll(tournamentId: string): Promise<void>;
+		setSeed(
+			tournamentId: string,
+			participantId: string,
+			seed: number | null
+		): Promise<tournamentParticipantsMemory.TournamentParticipantRecord>;
+		setNote(
+			tournamentId: string,
+			participantId: string,
+			note: string | null
+		): Promise<tournamentParticipantsMemory.TournamentParticipantRecord>;
+		ensureParticipant(
+			tournamentId: string,
+			participantId: string
+		): Promise<tournamentParticipantsMemory.TournamentParticipantRecord>;
+	};
 }
 
 export type DatabaseOptions = {
@@ -224,6 +281,9 @@ const wrapMemoryEvents = () => ({
 	},
 	async deleteEvent(eventId: string) {
 		return eventsMemory.deleteEvent(eventId);
+	},
+	async findEventBySlug(slug: string) {
+		return Promise.resolve(eventsMemory.findEventBySlug(slug));
 	},
 });
 
@@ -309,9 +369,11 @@ const wrapMemoryTeams = () => ({
 	async setTeams(eventId: string, teams: teamsMemory.TeamImportData[]) {
 		return teamsMemory.setTeams(eventId, teams);
 	},
-	async addTeamMember(teamId: string, _playerId: string) {
-		// memory store does not track team members; no-op for compatibility
-		return;
+	async addTeamMember(teamId: string, playerId: string) {
+		return Promise.resolve(teamsMemory.addTeamMember(teamId, playerId));
+	},
+	async listTeamMemberIds(teamId: string) {
+		return Promise.resolve(teamsMemory.listTeamMemberIds(teamId));
 	},
 });
 
@@ -364,6 +426,37 @@ const wrapMemoryBracketMatches = () => ({
 	},
 	async deleteBracketMatches(tournamentId: string) {
 		return bracketMatchesMemory.deleteBracketMatches(tournamentId);
+	},
+});
+
+const wrapMemoryFfaGroups = () => ({
+	async listFfaGroups(tournamentId: string) {
+		return ffaGroupsMemory.listFfaGroups(tournamentId);
+	},
+	async createFfaGroup(
+		tournamentId: string,
+		data: ffaGroupsMemory.FfaGroupImportData,
+	) {
+		return ffaGroupsMemory.createFfaGroup(tournamentId, data);
+	},
+	async ensureFfaGroup(tournamentId: string, groupId: string) {
+		return ffaGroupsMemory.ensureFfaGroup(tournamentId, groupId);
+	},
+	async updateFfaGroup(
+		tournamentId: string,
+		groupId: string,
+		data: ffaGroupsMemory.FfaGroupUpdateData,
+	) {
+		return ffaGroupsMemory.updateFfaGroup(tournamentId, groupId, data);
+	},
+	async setFfaGroups(
+		tournamentId: string,
+		groups: ffaGroupsMemory.FfaGroupImportData[],
+	) {
+		return ffaGroupsMemory.setFfaGroups(tournamentId, groups);
+	},
+	async clearFfaGroups(tournamentId: string) {
+		return ffaGroupsMemory.clearFfaGroups(tournamentId);
 	},
 });
 
@@ -475,6 +568,36 @@ const wrapMemoryPlayerStats = () => ({
 	},
 });
 
+const wrapMemoryTournamentParticipants = () => ({
+	async listParticipants(tournamentId: string) {
+		return tournamentParticipantsMemory.listParticipants(tournamentId);
+	},
+	async count(tournamentId: string) {
+		return tournamentParticipantsMemory.count(tournamentId);
+	},
+	async addPair(tournamentId: string, pairId: string, opts?: { seed?: number | null; note?: string | null }) {
+		return tournamentParticipantsMemory.addPair(tournamentId, pairId, opts);
+	},
+	async addSolo(tournamentId: string, playerId: string, opts?: { note?: string | null }) {
+		return tournamentParticipantsMemory.addSolo(tournamentId, playerId, opts);
+	},
+	async removeById(tournamentId: string, participantId: string) {
+		return tournamentParticipantsMemory.removeById(tournamentId, participantId);
+	},
+	async removeAll(tournamentId: string) {
+		return tournamentParticipantsMemory.removeAll(tournamentId);
+	},
+	async setSeed(tournamentId: string, participantId: string, seed: number | null) {
+		return tournamentParticipantsMemory.setSeed(tournamentId, participantId, seed);
+	},
+	async setNote(tournamentId: string, participantId: string, note: string | null) {
+		return tournamentParticipantsMemory.setNote(tournamentId, participantId, note);
+	},
+	async ensureParticipant(tournamentId: string, participantId: string) {
+		return tournamentParticipantsMemory.ensureParticipant(tournamentId, participantId);
+	},
+});
+
 const createMemoryDatabase = (): DatabaseContext => ({
 	events: wrapMemoryEvents(),
 	players: wrapMemoryPlayers(),
@@ -483,9 +606,11 @@ const createMemoryDatabase = (): DatabaseContext => ({
 	teams: wrapMemoryTeams(),
 	teamBattles: wrapMemoryTeamBattles(),
 	bracketMatches: wrapMemoryBracketMatches(),
+	ffaGroups: wrapMemoryFfaGroups(),
 	teamBattleSlots: wrapMemoryTeamBattleSlots(),
 	matches: wrapMemoryMatches(),
 	playerStats: wrapMemoryPlayerStats(),
+	tournamentParticipants: wrapMemoryTournamentParticipants(),
 });
 
 const createD1Database = (db: D1Database): DatabaseContext => ({
@@ -498,9 +623,11 @@ const createD1Database = (db: D1Database): DatabaseContext => ({
 	},
 	teamBattles: createTeamBattlesRepositoryD1(db),
 	bracketMatches: createBracketMatchesRepositoryD1(db),
+	ffaGroups: createFfaGroupsRepositoryD1(db),
 	teamBattleSlots: createTeamBattleSlotsRepositoryD1(db),
 	matches: createMatchesRepositoryD1(db),
 	playerStats: createPlayerStatsRepositoryD1(db),
+	tournamentParticipants: createTournamentParticipantsRepositoryD1(db),
 });
 
 export function getDatabase(context: AppLoadContext, options: DatabaseOptions = {}): DatabaseContext {
@@ -517,8 +644,8 @@ export function getDatabase(context: AppLoadContext, options: DatabaseOptions = 
 		console.warn("[database] Production environment detected but USE_MEMORY_STORE is true. This may cause data loss!");
 	}
 
-	// 開発環境では常にメモリストアを使用
-	if (shouldUseMemory || process.env.NODE_ENV === 'development') {
+	// 明示的にメモリストアを使用する場合、または開発環境でD1が利用できない場合
+	if (shouldUseMemory || (process.env.NODE_ENV === 'development' && !hasDB)) {
 		logDb("db.selected", stage, {
 			driver: "memory",
 			fallback: false,
@@ -528,6 +655,7 @@ export function getDatabase(context: AppLoadContext, options: DatabaseOptions = 
 		return createMemoryDatabase();
 	}
 
+	// D1データベースが利用できない場合
 	if (!db || typeof db.prepare !== "function") {
 		const fallback = stage !== 'production';
 		
@@ -543,7 +671,8 @@ export function getDatabase(context: AppLoadContext, options: DatabaseOptions = 
 			dbType: typeof db,
 			hasPrepare: db && typeof db.prepare === "function",
 			contextKeys: Object.keys(context),
-			cloudflareEnv: context.cloudflare?.env ? Object.keys(context.cloudflare.env) : "undefined"
+			cloudflareEnv: context.cloudflare?.env ? Object.keys(context.cloudflare.env) : "undefined",
+			stage,
 		});
 		
 		// 本番環境ではメモリストアへのフォールバックを避ける
@@ -554,6 +683,7 @@ export function getDatabase(context: AppLoadContext, options: DatabaseOptions = 
 		return createMemoryDatabase();
 	}
 
+	// D1データベースを使用
 	logDb("db.selected", stage, {
 		driver: "d1",
 		fallback: false,
@@ -572,7 +702,9 @@ export function resetRepositoriesForTests() {
 	teamsMemory.__resetForTests?.();
 	teamBattlesMemory.__resetForTests?.();
 	bracketMatchesMemory.__resetForTests?.();
+	ffaGroupsMemory.__resetForTests?.();
 	teamBattleSlotsMemory.__resetForTests?.();
 	matchesMemory.__resetForTests?.();
 	playerStatsMemory.__resetForTests?.();
+	tournamentParticipantsMemory.__resetForTests?.();
 }

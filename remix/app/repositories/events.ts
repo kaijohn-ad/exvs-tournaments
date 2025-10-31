@@ -116,6 +116,19 @@ export const deleteEvent = (eventId: string): void => {
 	}
 };
 
+export const findEventBySlug = (slug: string): EventRecord | null => {
+	const normalizedSlug = slug.trim().toLowerCase();
+	if (!normalizedSlug) {
+		return null;
+	}
+
+	const event = Array.from(store.values()).find(
+		(e) => e.slug && e.slug.toLowerCase() === normalizedSlug
+	);
+
+	return event || null;
+};
+
 export const __resetForTests = () => {
 	store.clear();
 };

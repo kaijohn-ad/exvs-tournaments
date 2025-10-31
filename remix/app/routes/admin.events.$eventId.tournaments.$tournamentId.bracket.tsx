@@ -17,6 +17,7 @@ import type { TournamentRecord } from "~/repositories/tournaments";
 import type { PairRecord } from "~/repositories/pairs";
 import type { PlayerRecord } from "~/repositories/players";
 import type { BracketMatchRecord } from "~/repositories/bracket-matches";
+import type { FfaGroupRecord } from "~/repositories/ffa-groups";
 
 type LoaderData = {
 	eventId: string;
@@ -25,21 +26,24 @@ type LoaderData = {
 	pairs: PairRecord[];
 	players: PlayerRecord[];
 	bracketMatches: BracketMatchRecord[];
+	ffaGroups: FfaGroupRecord[];
 };
 
 type ActionData =
 	| {
 			type: "success";
 			message: string;
-			matchId: string;
-			winnerSide: "a" | "b";
-			scoreA: number;
-			scoreB: number;
+			matchId?: string;
+			groupId?: string;
+			winnerSide?: "a" | "b";
+			scoreA?: number;
+			scoreB?: number;
 	  }
 	| {
 			type: "error";
 			message: string;
 			matchId?: string;
+			groupId?: string;
 	  };
 
 export async function loader({ params, context }: LoaderFunctionArgs) {
@@ -68,10 +72,11 @@ export async function loader({ params, context }: LoaderFunctionArgs) {
 		throw new Response("指定したトーナメントが見つかりません。", { status: 404 });
 	}
 
-	const [pairs, players, bracketMatches] = await Promise.all([
+	const [pairs, players, bracketMatches, ffaGroups] = await Promise.all([
 		db.pairs.listPairs(eventId),
 		db.players.listPlayers(eventId),
 		db.bracketMatches.listBracketMatches(tournamentId),
+		db.ffaGroups.listFfaGroups(tournamentId),
 	]);
 
 	return json<LoaderData>({
@@ -81,6 +86,7 @@ export async function loader({ params, context }: LoaderFunctionArgs) {
 		pairs,
 		players,
 		bracketMatches,
+		ffaGroups,
 	});
 }
 
@@ -251,43 +257,222 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 			winner_side: winnerSide,
 		});
 
+		// トーナメント形式を取得
+		const tournament = await db.tournaments.ensureTournament(tournamentId);
+		const isDoubleElimination = tournament.format === 'double-elimination';
 		const allMatches = await db.bracketMatches.listBracketMatches(tournamentId);
-		const nextRound = match.round + 1;
-		const nextPosition = Math.ceil(match.position / 2);
-		const nextMatch = allMatches.find(
-			(candidate) => candidate.round === nextRound && candidate.position === nextPosition
-		);
+		const matchBracket = match.bracket ?? 'winners';
 
-		if (nextMatch) {
-			const targetSide = match.position % 2 === 1 ? "a" : "b";
-			const currentTargetPairId =
-				targetSide === "a" ? nextMatch.participant_a_pair_id : nextMatch.participant_b_pair_id;
-			const needsParticipantUpdate = currentTargetPairId !== winnerPairId;
-			const needsReset =
-				nextMatch.status !== "pending" ||
-				nextMatch.winner_side !== null ||
-				nextMatch.score_a !== null ||
-				nextMatch.score_b !== null;
+		if (isDoubleElimination) {
+			// ダブルエリミネーションの伝播ロジック
+			if (matchBracket === 'winners') {
+				// Winners bracket: 勝者は次ラウンドへ、敗者はLosersへ
+				const nextWinnersRound = match.round + 1;
+				const nextWinnersPosition = Math.ceil(match.position / 2);
+				const nextWinnersMatch = allMatches.find(
+					(m) => m.bracket === 'winners' && m.round === nextWinnersRound && m.position === nextWinnersPosition
+				);
 
-			if (needsParticipantUpdate || needsReset) {
-				const updatePayload: any = {};
-
-				if (targetSide === "a" && needsParticipantUpdate) {
-					updatePayload.participant_a_type = "pair";
-					updatePayload.participant_a_pair_id = winnerPairId;
-				} else if (targetSide === "b" && needsParticipantUpdate) {
-					updatePayload.participant_b_type = "pair";
-					updatePayload.participant_b_pair_id = winnerPairId;
+				if (nextWinnersMatch) {
+					const targetSide = match.position % 2 === 1 ? "a" : "b";
+					const updatePayload: any = {
+						participant_a_type: targetSide === "a" ? "pair" : nextWinnersMatch.participant_a_type,
+						participant_a_pair_id: targetSide === "a" ? winnerPairId : nextWinnersMatch.participant_a_pair_id,
+						participant_b_type: targetSide === "b" ? "pair" : nextWinnersMatch.participant_b_type,
+						participant_b_pair_id: targetSide === "b" ? winnerPairId : nextWinnersMatch.participant_b_pair_id,
+					};
+					await db.bracketMatches.updateBracketMatch(tournamentId, nextWinnersMatch.id, updatePayload);
 				}
 
-				if (needsReset) {
-					updatePayload.status = "pending";
-					updatePayload.winner_side = null;
-					updatePayload.score_a = null;
-					updatePayload.score_b = null;
+				// 敗者をLosers bracketへ送る
+				// Winners Round 1の敗者はLosers Round 1へ
+				// Winners Round 2以降の敗者はLosers Round Nへ（N = Winners Round番号）
+				let losersTargetRound: number;
+				let losersTargetPosition: number;
+
+				if (match.round === 1) {
+					// Winners Round 1の敗者はLosers Round 1へ
+					losersTargetRound = 1;
+					// 2試合ごとにグループ化（position 1-2 → losers pos 1, position 3-4 → losers pos 2, etc.）
+					losersTargetPosition = Math.ceil(match.position / 2);
+					} else {
+					// Winners Round N (N>1)の敗者はLosers Round Nへ
+					losersTargetRound = match.round;
+					losersTargetPosition = Math.ceil(match.position / 2);
 				}
 
-				await db.bracketMatches.updateBracketMatch(tournamentId, nextMatch.id, updatePayload);
+				const losersMatch = allMatches.find(
+					(m) => m.bracket === 'losers' && m.round === losersTargetRound && m.position === losersTargetPosition
+				);
+
+				if (losersMatch) {
+					// Losers bracketの適切なスロットに敗者を配置
+					// 偶数positionのマッチの敗者はside a、奇数はside b（簡略化）
+					const targetSide = match.position % 2 === 0 ? "a" : "b";
+					const updatePayload: any = {
+						participant_a_type: targetSide === "a" ? "pair" : losersMatch.participant_a_type,
+						participant_a_pair_id: targetSide === "a" ? loserPairId : losersMatch.participant_a_pair_id,
+						participant_b_type: targetSide === "b" ? "pair" : losersMatch.participant_b_type,
+						participant_b_pair_id: targetSide === "b" ? loserPairId : losersMatch.participant_b_pair_id,
+					};
+					await db.bracketMatches.updateBracketMatch(tournamentId, losersMatch.id, updatePayload);
+				}
+			} else if (matchBracket === 'losers') {
+				// Losers bracket: 勝者は次ラウンドへ、敗者は脱落
+				const nextLosersRound = match.round + 1;
+				const nextLosersPosition = Math.ceil(match.position / 2);
+				const nextLosersMatch = allMatches.find(
+					(m) => m.bracket === 'losers' && m.round === nextLosersRound && m.position === nextLosersPosition
+				);
+
+				if (nextLosersMatch) {
+					const targetSide = match.position % 2 === 1 ? "a" : "b";
+					const updatePayload: any = {
+						participant_a_type: targetSide === "a" ? "pair" : nextLosersMatch.participant_a_type,
+						participant_a_pair_id: targetSide === "a" ? winnerPairId : nextLosersMatch.participant_a_pair_id,
+						participant_b_type: targetSide === "b" ? "pair" : nextLosersMatch.participant_b_type,
+						participant_b_pair_id: targetSide === "b" ? winnerPairId : nextLosersMatch.participant_b_pair_id,
+					};
+					await db.bracketMatches.updateBracketMatch(tournamentId, nextLosersMatch.id, updatePayload);
+					
+					// サイドBが未確定の場合（bye試合）、自動的に完了させる
+					// Note: participant_b_typeは'pair'または'bye'のみ（'empty'は使用されない）
+					if (targetSide === "a" && !nextLosersMatch.participant_b_pair_id && nextLosersMatch.participant_b_type === 'bye') {
+						// サイドAに勝者がいる場合、自動的に完了
+						const autoCompletePayload: any = {
+							status: "completed",
+							winner_side: "a",
+							score_a: 0,
+							score_b: 0,
+						};
+						await db.bracketMatches.updateBracketMatch(tournamentId, nextLosersMatch.id, autoCompletePayload);
+					} else if (targetSide === "b" && !nextLosersMatch.participant_a_pair_id && nextLosersMatch.participant_a_type === 'bye') {
+						// サイドBに勝者がいる場合、自動的に完了
+						const autoCompletePayload: any = {
+							status: "completed",
+							winner_side: "b",
+							score_a: 0,
+							score_b: 0,
+						};
+						await db.bracketMatches.updateBracketMatch(tournamentId, nextLosersMatch.id, autoCompletePayload);
+					}
+				}
+
+				// Losers bracketの最終ラウンドの勝者はGrand Finalsへ
+				const losersMatches = allMatches.filter(m => m.bracket === 'losers');
+				const maxLosersRound = Math.max(...losersMatches.map(m => m.round), 0);
+				if (match.round === maxLosersRound) {
+					const grandFinalsMatch = allMatches.find(
+						(m) => m.bracket === 'grand-finals' && m.round === 1
+					);
+					if (grandFinalsMatch) {
+						// Losers優勝者はGrand Finalsのside b
+						const updatePayload: any = {
+							participant_b_type: "pair",
+							participant_b_pair_id: winnerPairId,
+						};
+						await db.bracketMatches.updateBracketMatch(tournamentId, grandFinalsMatch.id, updatePayload);
+					}
+				}
+			} else if (matchBracket === 'grand-finals') {
+				// Grand Finals: Winners優勝者とLosers優勝者の対戦
+				// Grand Finals Round 1の処理
+				if (match.round === 1) {
+					// Winners優勝者をGrand Finalsのside aに配置（まだの場合は）
+					const winnersMatches = allMatches.filter(m => m.bracket === 'winners');
+					const maxWinnersRound = Math.max(...winnersMatches.map(m => m.round), 0);
+					const winnersFinalMatch = winnersMatches.find(m => m.round === maxWinnersRound);
+					if (winnersFinalMatch && winnersFinalMatch.winner_side) {
+						const winnersChampionId = winnersFinalMatch.winner_side === 'a' 
+							? winnersFinalMatch.participant_a_pair_id 
+							: winnersFinalMatch.participant_b_pair_id;
+						
+						if (!match.participant_a_pair_id || match.participant_a_pair_id !== winnersChampionId) {
+							const updatePayload: any = {
+								participant_a_type: "pair",
+								participant_a_pair_id: winnersChampionId,
+							};
+							await db.bracketMatches.updateBracketMatch(tournamentId, matchId, updatePayload);
+						}
+					}
+
+					// Reset formatかつLosers側が勝った場合、GF2を実施
+					if (tournament.grandFinalsFormat === 'reset' && winnerSide === 'b') {
+						const grandFinalsMatch2 = allMatches.find(
+							(m) => m.bracket === 'grand-finals' && m.round === 2
+						);
+						if (grandFinalsMatch2) {
+							// GF2を有効化（両サイドを設定）
+							const updatePayload: any = {
+								participant_a_type: "pair",
+								participant_a_pair_id: loserPairId, // GF1の敗者（Winners側）
+								participant_b_type: "pair",
+								participant_b_pair_id: winnerPairId, // GF1の勝者（Losers側）
+								status: "pending",
+							};
+							await db.bracketMatches.updateBracketMatch(tournamentId, grandFinalsMatch2.id, updatePayload);
+						}
+					}
+				}
+			}
+
+			// Winners bracketの最終ラウンドの勝者はGrand Finalsへ
+			if (matchBracket === 'winners') {
+				const winnersMatches = allMatches.filter(m => m.bracket === 'winners');
+				const maxWinnersRound = Math.max(...winnersMatches.map(m => m.round), 0);
+				if (match.round === maxWinnersRound) {
+					const grandFinalsMatch = allMatches.find(
+						(m) => m.bracket === 'grand-finals' && m.round === 1
+					);
+					if (grandFinalsMatch) {
+						// Winners優勝者はGrand Finalsのside a
+						const updatePayload: any = {
+							participant_a_type: "pair",
+							participant_a_pair_id: winnerPairId,
+						};
+						await db.bracketMatches.updateBracketMatch(tournamentId, grandFinalsMatch.id, updatePayload);
+					}
+				}
+			}
+		} else {
+			// シングルエリミネーション: 従来の伝播ロジック
+			const nextRound = match.round + 1;
+			const nextPosition = Math.ceil(match.position / 2);
+			const nextMatch = allMatches.find(
+				(candidate) => candidate.round === nextRound && candidate.position === nextPosition
+			);
+
+			if (nextMatch) {
+				const targetSide = match.position % 2 === 1 ? "a" : "b";
+				const currentTargetPairId =
+					targetSide === "a" ? nextMatch.participant_a_pair_id : nextMatch.participant_b_pair_id;
+				const needsParticipantUpdate = currentTargetPairId !== winnerPairId;
+				const needsReset =
+					nextMatch.status !== "pending" ||
+					nextMatch.winner_side !== null ||
+					nextMatch.score_a !== null ||
+					nextMatch.score_b !== null;
+
+				if (needsParticipantUpdate || needsReset) {
+					const updatePayload: any = {};
+
+					if (targetSide === "a" && needsParticipantUpdate) {
+						updatePayload.participant_a_type = "pair";
+						updatePayload.participant_a_pair_id = winnerPairId;
+					} else if (targetSide === "b" && needsParticipantUpdate) {
+						updatePayload.participant_b_type = "pair";
+						updatePayload.participant_b_pair_id = winnerPairId;
+					}
+
+					if (needsReset) {
+						updatePayload.status = "pending";
+						updatePayload.winner_side = null;
+						updatePayload.score_a = null;
+						updatePayload.score_b = null;
+					}
+
+					await db.bracketMatches.updateBracketMatch(tournamentId, nextMatch.id, updatePayload);
+				}
 			}
 		}
 
@@ -325,6 +510,123 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 			winnerSide,
 			scoreA,
 			scoreB,
+		});
+	}
+
+	if (intent === "record-ffa") {
+		const groupId = formData.get("groupId")?.toString();
+		const winner1Id = formData.get("winner1Id")?.toString();
+		const winner2Id = formData.get("winner2Id")?.toString();
+
+		if (!groupId) {
+			return json<ActionData>(
+				{ type: "error", message: "グループIDが取得できませんでした。" },
+				{ status: 400 }
+			);
+		}
+
+		if (!winner1Id || !winner2Id) {
+			return json<ActionData>(
+				{ type: "error", message: "勝者2名を選択してください。", groupId },
+				{ status: 400 }
+			);
+		}
+
+		if (winner1Id === winner2Id) {
+			return json<ActionData>(
+				{ type: "error", message: "勝者2名は異なるプレイヤーを選択してください。", groupId },
+				{ status: 400 }
+			);
+		}
+
+		const db = getDatabase(context);
+
+		let group: FfaGroupRecord;
+		try {
+			group = await db.ffaGroups.ensureFfaGroup(tournamentId, groupId);
+		} catch (error) {
+			console.error("[tournament-bracket:record-ffa] group not found", {
+				eventId,
+				tournamentId,
+				groupId,
+				error: error instanceof Error ? error.message : error,
+			});
+			return json<ActionData>(
+				{ type: "error", message: "指定したグループが見つかりません。", groupId },
+				{ status: 404 }
+			);
+		}
+
+		// 参加者を取得
+		const participantIds = [
+			group.participant_1_player_id,
+			group.participant_2_player_id,
+			group.participant_3_player_id,
+			group.participant_4_player_id,
+		].filter((id): id is string => Boolean(id));
+
+		if (!participantIds.includes(winner1Id) || !participantIds.includes(winner2Id)) {
+			return json<ActionData>(
+				{ type: "error", message: "勝者はこのグループの参加者である必要があります。", groupId },
+				{ status: 400 }
+			);
+		}
+
+		// グループを更新
+		await db.ffaGroups.updateFfaGroup(tournamentId, groupId, {
+			status: "completed",
+			winner1_player_id: winner1Id,
+			winner2_player_id: winner2Id,
+		});
+
+		// 次ラウンドへの伝播
+		const allGroups = await db.ffaGroups.listFfaGroups(tournamentId);
+		const nextRound = group.round + 1;
+		const nextPosition = Math.ceil(group.position / 2);
+		const nextGroup = allGroups.find(
+			(g) => g.round === nextRound && g.position === nextPosition
+		);
+
+		if (nextGroup) {
+			// 勝者割当規則（交差配置）
+			// 奇数グループ(2k-1): 1位→次グループslot1, 2位→slot3
+			// 偶数グループ(2k):   1位→次グループslot2, 2位→slot4
+			const isOddGroup = group.position % 2 === 1;
+			const slot1PlayerId = isOddGroup ? winner1Id : null;
+			const slot2PlayerId = isOddGroup ? null : winner1Id;
+			const slot3PlayerId = isOddGroup ? winner2Id : null;
+			const slot4PlayerId = isOddGroup ? null : winner2Id;
+
+			const updatePayload: any = {
+				participant_1_type: slot1PlayerId ? 'player' : (nextGroup.participant_1_type || 'empty'),
+				participant_1_player_id: slot1PlayerId || nextGroup.participant_1_player_id,
+				participant_2_type: slot2PlayerId ? 'player' : (nextGroup.participant_2_type || 'empty'),
+				participant_2_player_id: slot2PlayerId || nextGroup.participant_2_player_id,
+				participant_3_type: slot3PlayerId ? 'player' : (nextGroup.participant_3_type || 'empty'),
+				participant_3_player_id: slot3PlayerId || nextGroup.participant_3_player_id,
+				participant_4_type: slot4PlayerId ? 'player' : (nextGroup.participant_4_type || 'empty'),
+				participant_4_player_id: slot4PlayerId || nextGroup.participant_4_player_id,
+			};
+
+			await db.ffaGroups.updateFfaGroup(tournamentId, nextGroup.id, updatePayload);
+		}
+
+		// プレイヤースタット更新
+		const winnerIds = [winner1Id, winner2Id];
+		const loserIds = participantIds.filter(id => !winnerIds.includes(id));
+
+		for (const playerId of winnerIds) {
+			await db.playerStats.incrementPlayerStats(playerId, "tournament", tournamentId, true);
+		}
+
+		for (const playerId of loserIds) {
+			await db.playerStats.incrementPlayerStats(playerId, "tournament", tournamentId, false);
+		}
+
+		return json<ActionData>({
+			type: "success",
+			message: "グループ結果を記録しました。",
+			groupId,
 		});
 	}
 
@@ -370,14 +672,32 @@ interface RoundDisplay {
 	gapFactor: number;
 }
 
+interface FfaGroupDisplay {
+	id: string;
+	round: number;
+	position: number;
+	participants: Array<{
+		playerId: string | null;
+		playerName: string;
+		type: 'player' | 'bye' | 'empty';
+	}>;
+	winners: Array<string | null>;
+	status: string;
+	isCompleted: boolean;
+	isPending: boolean;
+	statusLabel: string;
+	statusClass: string;
+}
+
 export default function AdminBracketRoute() {
-	const { eventId, tournamentId, tournament, pairs, players, bracketMatches } =
+	const { eventId, tournamentId, tournament, pairs, players, bracketMatches, ffaGroups } =
 		useLoaderData<typeof loader>();
 	const actionData = useActionData<typeof action>();
 	const navigation = useNavigation();
 	const revalidator = useRevalidator();
 
 	const [recentMatchId, setRecentMatchId] = useState<string | null>(null);
+	const [recentGroupId, setRecentGroupId] = useState<string | null>(null);
 
 	// 自動リフレッシュ（5秒間隔）
 	useEffect(() => {
@@ -393,6 +713,10 @@ export default function AdminBracketRoute() {
 		if (actionData?.type === "success" && actionData.matchId) {
 			setRecentMatchId(actionData.matchId);
 			setTimeout(() => setRecentMatchId(null), 3000);
+		}
+		if (actionData?.type === "success" && actionData.groupId) {
+			setRecentGroupId(actionData.groupId);
+			setTimeout(() => setRecentGroupId(null), 3000);
 		}
 	}, [actionData]);
 
@@ -566,6 +890,59 @@ export default function AdminBracketRoute() {
 		return bracketMatches.map(toMatchDisplay);
 	}, [bracketMatches, playerNameById, pairById]);
 
+	// ダブルエリミネーション用: bracketごとにグループ化
+	const bracketGroups = useMemo(() => {
+		const groups: Record<'winners' | 'losers' | 'grand-finals', MatchDisplay[]> = {
+			'winners': [],
+			'losers': [],
+			'grand-finals': []
+		};
+
+		for (let i = 0; i < bracketMatches.length; i++) {
+			const match = bracketMatches[i];
+			const display = matchDisplays[i];
+			if (display) {
+				const bracket = match.bracket ?? 'winners';
+				if (bracket in groups) {
+					groups[bracket as keyof typeof groups].push(display);
+				}
+			}
+		}
+
+		return groups;
+	}, [bracketMatches, matchDisplays]);
+
+	const getRoundsForBracket = (matches: typeof matchDisplays): RoundDisplay[] => {
+		const roundNumbers = Array.from(new Set(matches.map((m) => m.round))).sort((a, b) => a - b);
+		const totalRounds = roundNumbers.length;
+
+		return roundNumbers.map((roundNumber) => {
+			const roundMatches = matches.filter((m) => m.round === roundNumber);
+			const gapFactor = Math.pow(2, totalRounds - roundNumber - 1);
+
+			let roundName: string;
+			if (roundNumber === 1) {
+				roundName = "1回戦";
+			} else if (roundNumber === totalRounds) {
+				roundName = "決勝";
+			} else if (roundNumber === totalRounds - 1) {
+				roundName = "準決勝";
+			} else if (roundNumber === totalRounds - 2) {
+				roundName = "準々決勝";
+			} else {
+				roundName = `${roundNumber}回戦`;
+			}
+
+			return {
+				round: roundNumber,
+				name: roundName,
+				matches: roundMatches,
+				gapFactor,
+			};
+		});
+	};
+
+	// シングルエリミネーション用: 従来の処理
 	const roundNumbers = useMemo(() => {
 		const rounds = new Set(matchDisplays.map((m) => m.round));
 		return Array.from(rounds).sort((a, b) => a - b);
@@ -599,7 +976,100 @@ export default function AdminBracketRoute() {
 		});
 	}, [matchDisplays, roundNumbers]);
 
-	// 進行状況の計算
+	// ダブルエリミネーション用のrounds
+	const winnersRounds = useMemo(() => getRoundsForBracket(bracketGroups.winners), [bracketGroups.winners]);
+	const losersRounds = useMemo(() => getRoundsForBracket(bracketGroups.losers), [bracketGroups.losers]);
+	const grandFinalsRounds = useMemo(() => getRoundsForBracket(bracketGroups['grand-finals']), [bracketGroups['grand-finals']]);
+
+	// FFA形式のグループ表示処理
+	const toFfaGroupDisplay = (group: FfaGroupRecord): FfaGroupDisplay => {
+		const participants = [
+			{
+				playerId: group.participant_1_player_id,
+				playerName: getPlayerName(group.participant_1_player_id),
+				type: group.participant_1_type,
+			},
+			{
+				playerId: group.participant_2_player_id,
+				playerName: getPlayerName(group.participant_2_player_id),
+				type: group.participant_2_type,
+			},
+			{
+				playerId: group.participant_3_player_id,
+				playerName: getPlayerName(group.participant_3_player_id),
+				type: group.participant_3_type,
+			},
+			{
+				playerId: group.participant_4_player_id,
+				playerName: getPlayerName(group.participant_4_player_id),
+				type: group.participant_4_type,
+			},
+		];
+
+		const isCompleted = group.status === 'completed' || Boolean(group.winner1_player_id && group.winner2_player_id);
+		const isPending = group.status === 'pending' && !isCompleted;
+
+		return {
+			id: group.id,
+			round: group.round,
+			position: group.position,
+			participants,
+			winners: [group.winner1_player_id, group.winner2_player_id],
+			status: group.status,
+			isCompleted,
+			isPending,
+			statusLabel: isCompleted ? '完了' : isPending ? '未開始' : '進行中',
+			statusClass: isCompleted ? 'status-completed' : isPending ? 'status-pending' : 'status-in-progress',
+		};
+	};
+
+	const ffaGroupDisplays = useMemo(() => {
+		return ffaGroups.map(toFfaGroupDisplay);
+	}, [ffaGroups, playerNameById]);
+
+	const ffaRoundNumbers = useMemo(() => {
+		const rounds = new Set(ffaGroupDisplays.map((g) => g.round));
+		return Array.from(rounds).sort((a, b) => a - b);
+	}, [ffaGroupDisplays]);
+
+	const ffaRounds = useMemo(() => {
+		return ffaRoundNumbers.map((roundNumber) => {
+			const roundGroups = ffaGroupDisplays.filter((g) => g.round === roundNumber);
+			const totalRounds = ffaRoundNumbers.length;
+			const gapFactor = Math.pow(2, totalRounds - roundNumber - 1);
+
+			let roundName: string;
+			if (roundNumber === 1) {
+				roundName = "1回戦";
+			} else if (roundNumber === totalRounds) {
+				roundName = "決勝";
+			} else if (roundNumber === totalRounds - 1) {
+				roundName = "準決勝";
+			} else if (roundNumber === totalRounds - 2) {
+				roundName = "準々決勝";
+			} else {
+				roundName = `${roundNumber}回戦`;
+			}
+
+			return {
+				round: roundNumber,
+				name: roundName,
+				groups: roundGroups,
+				gapFactor,
+			};
+		});
+	}, [ffaGroupDisplays, ffaRoundNumbers]);
+
+	// 進行状況の計算（FFA形式）
+	const totalFfaGroups = ffaGroupDisplays.length;
+	const completedFfaGroups = ffaGroupDisplays.filter((g) => g.isCompleted).length;
+	const pendingFfaGroups = ffaGroupDisplays.filter((g) => g.isPending).length;
+	const progressFfaPercent = totalFfaGroups > 0 ? (completedFfaGroups / totalFfaGroups) * 100 : 0;
+
+	const activeFfaRound = ffaRounds.find((r) => r.groups.some((g) => g.isPending));
+	const activeFfaRoundName = activeFfaRound?.name ?? "完了";
+
+	// 進行状況の計算（シングルエリミネーション/ダブルエリミネーション）
 	const totalMatches = matchDisplays.length;
 	const completedMatches = matchDisplays.filter((m) => m.isCompleted).length;
 	const inProgressMatches = matchDisplays.filter((m) => m.isInProgress).length;
@@ -609,7 +1079,15 @@ export default function AdminBracketRoute() {
 	const activeRound = rounds.find((r) => r.matches.some((m) => m.isInProgress || m.isPending));
 	const activeRoundName = activeRound?.name ?? "完了";
 
+	// ダブルエリミネーション用の進行状況
+	const activeWinnersRound = winnersRounds.find((r) => r.matches.some((m) => m.isInProgress || m.isPending));
+	const activeLosersRound = losersRounds.find((r) => r.matches.some((m) => m.isInProgress || m.isPending));
+	const activeGrandFinalsRound = grandFinalsRounds.find((r) => r.matches.some((m) => m.isInProgress || m.isPending));
+	const activeDoubleEliminationRoundName = activeGrandFinalsRound?.name ?? activeLosersRound?.name ?? activeWinnersRound?.name ?? "完了";
+
 	const isSubmitting = navigation.state === "submitting";
+	const isFfaFormat = tournament.format === 'ffa-2up';
+	const isDoubleElimination = tournament.format === 'double-elimination';
 
 	return (
 		<div className="mx-auto flex w-full max-w-7xl flex-col gap-8 px-6 py-10">
@@ -647,66 +1125,732 @@ export default function AdminBracketRoute() {
 				<header className="mb-6 flex items-center justify-between">
 					<h2 className="text-xl font-semibold text-slate-900">進行状況</h2>
 					<span className="rounded-full bg-blue-100 px-3 py-1 text-sm font-medium text-blue-800">
-						現在: {activeRoundName}
+						現在: {isFfaFormat ? activeFfaRoundName : isDoubleElimination ? activeDoubleEliminationRoundName : activeRoundName}
 					</span>
 				</header>
 
-				{totalMatches === 0 ? (
-					<p className="text-slate-500">
-						ブラケットがまだ生成されていません。トーナメント設定からブラケットを作成してください。
-					</p>
-				) : (
-					<>
-						<div className="mb-6">
-							<div className="h-2 w-full rounded-full bg-slate-200">
-								<div
-									className="h-2 rounded-full bg-blue-600 transition-all duration-300"
-									style={{ width: `${progressPercent}%` }}
-								></div>
-							</div>
-						</div>
-
-						<div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-							<div className="text-center">
-								<div className="text-2xl font-bold text-slate-900">{totalMatches}</div>
-								<div className="text-sm text-slate-600">合計</div>
-							</div>
-							<div className="text-center">
-								<div className="text-2xl font-bold text-green-600">{completedMatches}</div>
-								<div className="text-sm text-slate-600">完了</div>
-							</div>
-							<div className="text-center">
-								<div className="text-2xl font-bold text-blue-600">{inProgressMatches}</div>
-								<div className="text-sm text-slate-600">進行中</div>
-							</div>
-							<div className="text-center">
-								<div className="text-2xl font-bold text-slate-400">{pendingMatches}</div>
-								<div className="text-sm text-slate-600">未開始</div>
-							</div>
-						</div>
-
-						<p className="mt-4 text-center text-sm text-slate-600">
-							全{totalMatches}試合中{completedMatches}試合が完了しています。
+				{isFfaFormat ? (
+					totalFfaGroups === 0 ? (
+						<p className="text-slate-500">
+							ブラケットがまだ生成されていません。トーナメント設定からブラケットを作成してください。
 						</p>
-					</>
+					) : (
+						<>
+							<div className="mb-6">
+								<div className="h-2 w-full rounded-full bg-slate-200">
+									<div
+										className="h-2 rounded-full bg-blue-600 transition-all duration-300"
+										style={{ width: `${progressFfaPercent}%` }}
+									></div>
+								</div>
+							</div>
+
+							<div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+								<div className="text-center">
+									<div className="text-2xl font-bold text-slate-900">{totalFfaGroups}</div>
+									<div className="text-sm text-slate-600">合計グループ</div>
+								</div>
+								<div className="text-center">
+									<div className="text-2xl font-bold text-green-600">{completedFfaGroups}</div>
+									<div className="text-sm text-slate-600">完了</div>
+								</div>
+								<div className="text-center">
+									<div className="text-2xl font-bold text-slate-400">{pendingFfaGroups}</div>
+									<div className="text-sm text-slate-600">未開始</div>
+								</div>
+							</div>
+
+							<p className="mt-4 text-center text-sm text-slate-600">
+								全{totalFfaGroups}グループ中{completedFfaGroups}グループが完了しています。
+							</p>
+						</>
+					)
+				) : (
+					totalMatches === 0 ? (
+						<p className="text-slate-500">
+							ブラケットがまだ生成されていません。トーナメント設定からブラケットを作成してください。
+						</p>
+					) : (
+						<>
+							<div className="mb-6">
+								<div className="h-2 w-full rounded-full bg-slate-200">
+									<div
+										className="h-2 rounded-full bg-blue-600 transition-all duration-300"
+										style={{ width: `${progressPercent}%` }}
+									></div>
+								</div>
+							</div>
+
+							<div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+								<div className="text-center">
+									<div className="text-2xl font-bold text-slate-900">{totalMatches}</div>
+									<div className="text-sm text-slate-600">合計</div>
+								</div>
+								<div className="text-center">
+									<div className="text-2xl font-bold text-green-600">{completedMatches}</div>
+									<div className="text-sm text-slate-600">完了</div>
+								</div>
+								<div className="text-center">
+									<div className="text-2xl font-bold text-blue-600">{inProgressMatches}</div>
+									<div className="text-sm text-slate-600">進行中</div>
+								</div>
+								<div className="text-center">
+									<div className="text-2xl font-bold text-slate-400">{pendingMatches}</div>
+									<div className="text-sm text-slate-600">未開始</div>
+								</div>
+							</div>
+
+							<p className="mt-4 text-center text-sm text-slate-600">
+								全{totalMatches}試合中{completedMatches}試合が完了しています。
+							</p>
+						</>
+					)
 				)}
 			</section>
 
 			{/* ブラケット表示 */}
-			<section className="rounded-2xl border border-slate-200 bg-white p-8 shadow-lg">
+			<section className="rounded-2xl border border-slate-200 bg-white p-8 shadow-lg" data-testid="bracket">
 				<header className="mb-6">
 					<h2 className="text-xl font-semibold text-slate-900">トーナメント表</h2>
 					<p className="mt-1 text-sm text-slate-600">横スクロールで全ラウンドを表示できます。</p>
 				</header>
 
-				{rounds.length === 0 ? (
-					<p className="text-slate-500">表示できるブラケットがありません。</p>
+				{isFfaFormat ? (
+					ffaRounds.length === 0 ? (
+						<p className="text-slate-500">表示できるブラケットがありません。</p>
+					) : (
+						<div className="overflow-x-auto">
+							<div className="flex min-w-max gap-8">
+								{ffaRounds.map((round) => (
+									<section
+										key={round.round}
+										data-testid={`round-${round.round}`}
+										className="flex min-w-[320px] flex-col"
+										style={{ gap: `${round.gapFactor * 8}px` }}
+									>
+										<header className="mb-4 text-center">
+											<h3 className="text-lg font-semibold text-slate-900">{round.name}</h3>
+											<span className="text-sm text-slate-500">R{round.round}</span>
+										</header>
+
+										{round.groups.length === 0 ? (
+											<p className="text-center text-sm text-slate-500">グループが設定されていません。</p>
+										) : (
+											<div className="space-y-4">
+												{round.groups.map((group) => (
+													<article
+														key={group.id}
+														data-testid={`group-${group.id}`}
+														className={`rounded-lg border p-4 transition-all ${
+															group.isCompleted
+																? "border-green-200 bg-green-50"
+																: group.isPending
+																? "border-slate-200 bg-white"
+																: "border-blue-200 bg-blue-50"
+														} ${
+															recentGroupId === group.id ? "ring-2 ring-blue-500" : ""
+														}`}
+													>
+														<header className="mb-3 flex items-center justify-between">
+															<span className="text-xs font-medium text-slate-500">
+																#{group.position}
+															</span>
+															<span
+																className={`rounded-full px-2 py-1 text-xs font-medium ${
+																	group.statusClass === "status-completed"
+																		? "bg-green-100 text-green-800"
+																		: group.statusClass === "status-in-progress"
+																		? "bg-blue-100 text-blue-800"
+																		: "bg-slate-100 text-slate-800"
+																}`}
+															>
+																{group.statusLabel}
+															</span>
+														</header>
+
+														<div className="space-y-2">
+															{group.participants.map((participant, index) => {
+																const isWinner = group.winners.includes(participant.playerId);
+																return (
+																	<div
+																		key={index}
+																		className={`flex items-center justify-between rounded p-2 ${
+																			group.isCompleted && isWinner
+																				? "bg-green-100"
+																				: group.isCompleted && !isWinner
+																				? "bg-red-50"
+																				: "bg-slate-50"
+																		}`}
+																	>
+																		<div className="flex-1">
+																			{participant.type === "player" ? (
+																				<div className="font-medium text-slate-900">
+																					{participant.playerName}
+																					{isWinner && group.isCompleted && (
+																						<span className="ml-2 text-xs text-green-600">✓ 勝ち上がり</span>
+																					)}
+																				</div>
+																			) : (
+																				<span className="text-slate-500">
+																					{participant.type === "bye" ? "BYE" : "未確定"}
+																				</span>
+																			)}
+																		</div>
+																	</div>
+																);
+															})}
+														</div>
+
+														{/* 結果入力フォーム */}
+														{group.isPending && group.participants.filter(p => p.type === 'player').length === 4 && (
+															<Form method="post" className="mt-4 space-y-3">
+																<input type="hidden" name="_intent" value="record-ffa" />
+																<input type="hidden" name="groupId" value={group.id} />
+
+																<div>
+																	<label className="block text-xs font-medium text-slate-700 mb-2">
+																		勝者1（1位）
+																	</label>
+																	<select
+																		name="winner1Id"
+																		required
+																		className="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+																	>
+																		<option value="">選択してください</option>
+																		{group.participants
+																			.filter(p => p.type === 'player' && p.playerId)
+																			.map((p) => (
+																				<option key={p.playerId} value={p.playerId!}>
+																					{p.playerName}
+																				</option>
+																			))}
+																	</select>
+																</div>
+
+																<div>
+																	<label className="block text-xs font-medium text-slate-700 mb-2">
+																		勝者2（2位）
+																	</label>
+																	<select
+																		name="winner2Id"
+																		required
+																		className="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+																	>
+																		<option value="">選択してください</option>
+																		{group.participants
+																			.filter(p => p.type === 'player' && p.playerId)
+																			.map((p) => (
+																				<option key={p.playerId} value={p.playerId!}>
+																					{p.playerName}
+																				</option>
+																			))}
+																	</select>
+																</div>
+
+																<button
+																	type="submit"
+																	disabled={isSubmitting}
+																	className="w-full rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-50"
+																>
+																	{isSubmitting ? "記録中..." : "結果を記録"}
+																</button>
+															</Form>
+														)}
+													</article>
+												))}
+											</div>
+										)}
+									</section>
+								))}
+							</div>
+						</div>
+					)
+				) : isDoubleElimination ? (
+					// ダブルエリミネーション: 3セクション表示
+					<div className="space-y-12">
+						{/* Winners Bracket */}
+						{winnersRounds.length > 0 && (
+							<div>
+								<h3 className="text-2xl font-bold text-slate-900 mb-6">勝者側ブラケット</h3>
+								<div className="overflow-x-auto">
+									<div className="flex min-w-max gap-8">
+										{winnersRounds.map((round) => (
+											<section
+												key={`winners-${round.round}`}
+												data-testid={`winners-round-${round.round}`}
+												className="flex min-w-[280px] flex-col"
+												style={{ gap: `${round.gapFactor * 8}px` }}
+											>
+												<header className="mb-4 text-center">
+													<h4 className="text-lg font-semibold text-slate-900">{round.name}</h4>
+													<span className="text-sm text-slate-500">R{round.round}</span>
+												</header>
+												{round.matches.length === 0 ? (
+													<p className="text-center text-sm text-slate-500">マッチが設定されていません。</p>
+												) : (
+													<div className="space-y-4">
+														{round.matches.map((match) => (
+															<article
+																key={match.id}
+																data-testid={`match-${match.id}`}
+																className={`rounded-lg border p-4 transition-all ${
+																	match.statusModifier === "completed"
+																		? "border-green-200 bg-green-50"
+																		: match.statusModifier === "in-progress"
+																		? "border-blue-200 bg-blue-50"
+																		: "border-slate-200 bg-white"
+																} ${
+																	recentMatchId === match.id ? "ring-2 ring-blue-500" : ""
+																}`}
+															>
+																<header className="mb-3 flex items-center justify-between">
+																	<span className="text-xs font-medium text-slate-500">
+																		#{match.position}
+																	</span>
+																	<span
+																		className={`rounded-full px-2 py-1 text-xs font-medium ${
+																			match.statusClass === "status-completed"
+																				? "bg-green-100 text-green-800"
+																				: match.statusClass === "status-in-progress"
+																				? "bg-blue-100 text-blue-800"
+																				: match.statusClass === "status-auto"
+																				? "bg-purple-100 text-purple-800"
+																				: "bg-slate-100 text-slate-800"
+																		}`}
+																	>
+																		{match.statusLabel}
+																	</span>
+																</header>
+																<div className="space-y-2">
+																	<div
+																		data-testid="participant-a"
+																		className={`flex items-center justify-between rounded p-2 ${
+																			match.isCompleted && match.winnerSide === "a"
+																				? "bg-green-100"
+																				: match.isCompleted && match.winnerSide && match.winnerSide !== "a"
+																				? "bg-red-50"
+																				: match.isInProgress
+																				? "bg-blue-50"
+																				: "bg-slate-50"
+																		}`}
+																	>
+																		<div className="flex-1">
+																			{match.participantA.type === "pair" ? (
+																				<>
+																					<div className="font-medium text-slate-900">
+																						{match.participantA.playerNames[0]} / {match.participantA.playerNames[1]}
+																					</div>
+																					{match.participantA.seed != null && (
+																						<span className="text-xs text-slate-500">
+																							シード {match.participantA.seed}
+																						</span>
+																					)}
+																				</>
+																			) : (
+																				<span className="text-slate-500">{match.participantA.label}</span>
+																			)}
+																		</div>
+																		<span className="ml-2 font-mono text-lg font-bold">
+																			{match.scoreALabel}
+																		</span>
+																	</div>
+																	<div
+																		data-testid="participant-b"
+																		className={`flex items-center justify-between rounded p-2 ${
+																			match.isCompleted && match.winnerSide === "b"
+																				? "bg-green-100"
+																				: match.isCompleted && match.winnerSide && match.winnerSide !== "b"
+																				? "bg-red-50"
+																				: match.isInProgress
+																				? "bg-blue-50"
+																				: "bg-slate-50"
+																		}`}
+																	>
+																		<div className="flex-1">
+																			{match.participantB.type === "pair" ? (
+																				<>
+																					<div className="font-medium text-slate-900">
+																						{match.participantB.playerNames[0]} / {match.participantB.playerNames[1]}
+																					</div>
+																					{match.participantB.seed != null && (
+																						<span className="text-xs text-slate-500">
+																							シード {match.participantB.seed}
+																						</span>
+																					)}
+																				</>
+																			) : (
+																				<span className="text-slate-500">{match.participantB.label}</span>
+																			)}
+																		</div>
+																		<span className="ml-2 font-mono text-lg font-bold">
+																			{match.scoreBLabel}
+																		</span>
+																	</div>
+																</div>
+																{match.isPending && match.participantA.type === "pair" && match.participantB.type === "pair" && (
+																	<Form method="post" className="mt-4 space-y-3">
+																		<input type="hidden" name="_intent" value="record" />
+																		<input type="hidden" name="matchId" value={match.id} />
+																		<div className="grid grid-cols-2 gap-3">
+																			<div>
+																				<label className="block text-xs font-medium text-slate-700">サイドAスコア</label>
+																				<input type="number" name="scoreA" min="0" required className="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm" />
+																			</div>
+																			<div>
+																				<label className="block text-xs font-medium text-slate-700">サイドBスコア</label>
+																				<input type="number" name="scoreB" min="0" required className="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm" />
+																			</div>
+																		</div>
+																		<div>
+																			<label className="block text-xs font-medium text-slate-700">勝者を選択</label>
+																			<select name="winnerSide" required className="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm">
+																				<option value="">選択してください</option>
+																				<option value="a">サイドA</option>
+																				<option value="b">サイドB</option>
+																			</select>
+																		</div>
+																		<button type="submit" disabled={isSubmitting} className="w-full rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-50">
+																			{isSubmitting ? "記録中..." : "結果を記録"}
+																		</button>
+																	</Form>
+																)}
+															</article>
+														))}
+													</div>
+												)}
+											</section>
+										))}
+									</div>
+								</div>
+							</div>
+						)}
+
+						{/* Losers Bracket */}
+						{losersRounds.length > 0 && (
+							<div>
+								<h3 className="text-2xl font-bold text-slate-900 mb-6">敗者側ブラケット</h3>
+								<div className="overflow-x-auto">
+									<div className="flex min-w-max gap-8">
+										{losersRounds.map((round) => (
+											<section
+												key={`losers-${round.round}`}
+												data-testid={`losers-round-${round.round}`}
+												className="flex min-w-[280px] flex-col"
+												style={{ gap: `${round.gapFactor * 8}px` }}
+											>
+												<header className="mb-4 text-center">
+													<h4 className="text-lg font-semibold text-slate-900">{round.name}</h4>
+													<span className="text-sm text-slate-500">R{round.round}</span>
+												</header>
+												{round.matches.length === 0 ? (
+													<p className="text-center text-sm text-slate-500">マッチが設定されていません。</p>
+												) : (
+													<div className="space-y-4">
+														{round.matches.map((match) => (
+															<article
+																key={match.id}
+																data-testid={`match-${match.id}`}
+																className={`rounded-lg border p-4 transition-all ${
+																	match.statusModifier === "completed"
+																		? "border-green-200 bg-green-50"
+																		: match.statusModifier === "in-progress"
+																		? "border-blue-200 bg-blue-50"
+																		: "border-slate-200 bg-white"
+																} ${
+																	recentMatchId === match.id ? "ring-2 ring-blue-500" : ""
+																}`}
+															>
+																<header className="mb-3 flex items-center justify-between">
+																	<span className="text-xs font-medium text-slate-500">
+																		#{match.position}
+																	</span>
+																	<span
+																		className={`rounded-full px-2 py-1 text-xs font-medium ${
+																			match.statusClass === "status-completed"
+																				? "bg-green-100 text-green-800"
+																				: match.statusClass === "status-in-progress"
+																				? "bg-blue-100 text-blue-800"
+																				: match.statusClass === "status-auto"
+																				? "bg-purple-100 text-purple-800"
+																				: "bg-slate-100 text-slate-800"
+																		}`}
+																	>
+																		{match.statusLabel}
+																	</span>
+																</header>
+																<div className="space-y-2">
+																	<div
+																		data-testid="participant-a"
+																		className={`flex items-center justify-between rounded p-2 ${
+																			match.isCompleted && match.winnerSide === "a"
+																				? "bg-green-100"
+																				: match.isCompleted && match.winnerSide && match.winnerSide !== "a"
+																				? "bg-red-50"
+																				: match.isInProgress
+																				? "bg-blue-50"
+																				: "bg-slate-50"
+																		}`}
+																	>
+																		<div className="flex-1">
+																			{match.participantA.type === "pair" ? (
+																				<>
+																					<div className="font-medium text-slate-900">
+																						{match.participantA.playerNames[0]} / {match.participantA.playerNames[1]}
+																					</div>
+																					{match.participantA.seed != null && (
+																						<span className="text-xs text-slate-500">
+																							シード {match.participantA.seed}
+																						</span>
+																					)}
+																				</>
+																			) : (
+																				<span className="text-slate-500">{match.participantA.label}</span>
+																			)}
+																		</div>
+																		<span className="ml-2 font-mono text-lg font-bold">
+																			{match.scoreALabel}
+																		</span>
+																	</div>
+																	<div
+																		data-testid="participant-b"
+																		className={`flex items-center justify-between rounded p-2 ${
+																			match.isCompleted && match.winnerSide === "b"
+																				? "bg-green-100"
+																				: match.isCompleted && match.winnerSide && match.winnerSide !== "b"
+																				? "bg-red-50"
+																				: match.isInProgress
+																				? "bg-blue-50"
+																				: "bg-slate-50"
+																		}`}
+																	>
+																		<div className="flex-1">
+																			{match.participantB.type === "pair" ? (
+																				<>
+																					<div className="font-medium text-slate-900">
+																						{match.participantB.playerNames[0]} / {match.participantB.playerNames[1]}
+																					</div>
+																					{match.participantB.seed != null && (
+																						<span className="text-xs text-slate-500">
+																							シード {match.participantB.seed}
+																						</span>
+																					)}
+																				</>
+																			) : (
+																				<span className="text-slate-500">{match.participantB.label}</span>
+																			)}
+																		</div>
+																		<span className="ml-2 font-mono text-lg font-bold">
+																			{match.scoreBLabel}
+																		</span>
+																	</div>
+																</div>
+																{match.isPending && match.participantA.type === "pair" && match.participantB.type === "pair" && (
+																	<Form method="post" className="mt-4 space-y-3">
+																		<input type="hidden" name="_intent" value="record" />
+																		<input type="hidden" name="matchId" value={match.id} />
+																		<div className="grid grid-cols-2 gap-3">
+																			<div>
+																				<label className="block text-xs font-medium text-slate-700">サイドAスコア</label>
+																				<input type="number" name="scoreA" min="0" required className="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm" />
+																			</div>
+																			<div>
+																				<label className="block text-xs font-medium text-slate-700">サイドBスコア</label>
+																				<input type="number" name="scoreB" min="0" required className="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm" />
+																			</div>
+																		</div>
+																		<div>
+																			<label className="block text-xs font-medium text-slate-700">勝者を選択</label>
+																			<select name="winnerSide" required className="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm">
+																				<option value="">選択してください</option>
+																				<option value="a">サイドA</option>
+																				<option value="b">サイドB</option>
+																			</select>
+																		</div>
+																		<button type="submit" disabled={isSubmitting} className="w-full rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-50">
+																			{isSubmitting ? "記録中..." : "結果を記録"}
+																		</button>
+																	</Form>
+																)}
+															</article>
+														))}
+													</div>
+												)}
+											</section>
+										))}
+									</div>
+								</div>
+							</div>
+						)}
+
+						{/* Grand Finals */}
+						{grandFinalsRounds.length > 0 && (
+							<div>
+								<h3 className="text-2xl font-bold text-slate-900 mb-6">グランドファイナル</h3>
+								<div className="overflow-x-auto">
+									<div className="flex min-w-max gap-8">
+										{grandFinalsRounds.map((round) => (
+											<section
+												key={`grand-finals-${round.round}`}
+												data-testid={`grand-finals-round-${round.round}`}
+												className="flex min-w-[280px] flex-col"
+												style={{ gap: `${round.gapFactor * 8}px` }}
+											>
+												<header className="mb-4 text-center">
+													<h4 className="text-lg font-semibold text-slate-900">
+														{round.round === 1 ? "グランドファイナル" : "グランドファイナル (Reset)"}
+													</h4>
+													<span className="text-sm text-slate-500">R{round.round}</span>
+												</header>
+												{round.matches.length === 0 ? (
+													<p className="text-center text-sm text-slate-500">マッチが設定されていません。</p>
+												) : (
+													<div className="space-y-4">
+														{round.matches.map((match) => (
+															<article
+																key={match.id}
+																data-testid={`match-${match.id}`}
+																className={`rounded-lg border p-4 transition-all ${
+																	match.statusModifier === "completed"
+																		? "border-green-200 bg-green-50"
+																		: match.statusModifier === "in-progress"
+																		? "border-blue-200 bg-blue-50"
+																		: "border-slate-200 bg-white"
+																} ${
+																	recentMatchId === match.id ? "ring-2 ring-blue-500" : ""
+																}`}
+															>
+																<header className="mb-3 flex items-center justify-between">
+																	<span className="text-xs font-medium text-slate-500">
+																		#{match.position}
+																	</span>
+																	<span
+																		className={`rounded-full px-2 py-1 text-xs font-medium ${
+																			match.statusClass === "status-completed"
+																				? "bg-green-100 text-green-800"
+																				: match.statusClass === "status-in-progress"
+																				? "bg-blue-100 text-blue-800"
+																				: match.statusClass === "status-auto"
+																				? "bg-purple-100 text-purple-800"
+																				: "bg-slate-100 text-slate-800"
+																		}`}
+																	>
+																		{match.statusLabel}
+																	</span>
+																</header>
+																<div className="space-y-2">
+																	<div
+																		data-testid="participant-a"
+																		className={`flex items-center justify-between rounded p-2 ${
+																			match.isCompleted && match.winnerSide === "a"
+																				? "bg-green-100"
+																				: match.isCompleted && match.winnerSide && match.winnerSide !== "a"
+																				? "bg-red-50"
+																				: match.isInProgress
+																				? "bg-blue-50"
+																				: "bg-slate-50"
+																		}`}
+																	>
+																		<div className="flex-1">
+																			{match.participantA.type === "pair" ? (
+																				<>
+																					<div className="font-medium text-slate-900">
+																						{match.participantA.playerNames[0]} / {match.participantA.playerNames[1]}
+																					</div>
+																					{match.participantA.seed != null && (
+																						<span className="text-xs text-slate-500">
+																							シード {match.participantA.seed}
+																						</span>
+																					)}
+																				</>
+																			) : (
+																				<span className="text-slate-500">{match.participantA.label}</span>
+																			)}
+																		</div>
+																		<span className="ml-2 font-mono text-lg font-bold">
+																			{match.scoreALabel}
+																		</span>
+																	</div>
+																	<div
+																		data-testid="participant-b"
+																		className={`flex items-center justify-between rounded p-2 ${
+																			match.isCompleted && match.winnerSide === "b"
+																				? "bg-green-100"
+																				: match.isCompleted && match.winnerSide && match.winnerSide !== "b"
+																				? "bg-red-50"
+																				: match.isInProgress
+																				? "bg-blue-50"
+																				: "bg-slate-50"
+																		}`}
+																	>
+																		<div className="flex-1">
+																			{match.participantB.type === "pair" ? (
+																				<>
+																					<div className="font-medium text-slate-900">
+																						{match.participantB.playerNames[0]} / {match.participantB.playerNames[1]}
+																					</div>
+																					{match.participantB.seed != null && (
+																						<span className="text-xs text-slate-500">
+																							シード {match.participantB.seed}
+																						</span>
+																					)}
+																				</>
+																			) : (
+																				<span className="text-slate-500">{match.participantB.label}</span>
+																			)}
+																		</div>
+																		<span className="ml-2 font-mono text-lg font-bold">
+																			{match.scoreBLabel}
+																		</span>
+																	</div>
+																</div>
+																{match.isPending && match.participantA.type === "pair" && match.participantB.type === "pair" && (
+																	<Form method="post" className="mt-4 space-y-3">
+																		<input type="hidden" name="_intent" value="record" />
+																		<input type="hidden" name="matchId" value={match.id} />
+																		<div className="grid grid-cols-2 gap-3">
+																			<div>
+																				<label className="block text-xs font-medium text-slate-700">サイドAスコア</label>
+																				<input type="number" name="scoreA" min="0" required className="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm" />
+																			</div>
+																			<div>
+																				<label className="block text-xs font-medium text-slate-700">サイドBスコア</label>
+																				<input type="number" name="scoreB" min="0" required className="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm" />
+																			</div>
+																		</div>
+																		<div>
+																			<label className="block text-xs font-medium text-slate-700">勝者を選択</label>
+																			<select name="winnerSide" required className="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm">
+																				<option value="">選択してください</option>
+																				<option value="a">サイドA</option>
+																				<option value="b">サイドB</option>
+																			</select>
+																		</div>
+																		<button type="submit" disabled={isSubmitting} className="w-full rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-50">
+																			{isSubmitting ? "記録中..." : "結果を記録"}
+																		</button>
+																	</Form>
+																)}
+															</article>
+														))}
+													</div>
+												)}
+											</section>
+										))}
+									</div>
+								</div>
+							</div>
+						)}
+					</div>
 				) : (
-					<div className="overflow-x-auto">
-						<div className="flex min-w-max gap-8">
+					rounds.length === 0 ? (
+						<p className="text-slate-500">表示できるブラケットがありません。</p>
+					) : (
+						<div className="overflow-x-auto">
+							<div className="flex min-w-max gap-8">
 							{rounds.map((round) => (
 								<section
 									key={round.round}
+									data-testid={`round-${round.round}`}
 									className="flex min-w-[280px] flex-col"
 									style={{ gap: `${round.gapFactor * 8}px` }}
 								>
@@ -722,6 +1866,7 @@ export default function AdminBracketRoute() {
 											{round.matches.map((match) => (
 												<article
 													key={match.id}
+													data-testid={`match-${match.id}`}
 													className={`rounded-lg border p-4 transition-all ${
 														match.statusModifier === "completed"
 															? "border-green-200 bg-green-50"
@@ -754,6 +1899,7 @@ export default function AdminBracketRoute() {
 													<div className="space-y-2">
 														{/* サイドA */}
 														<div
+															data-testid="participant-a"
 															className={`flex items-center justify-between rounded p-2 ${
 																match.isCompleted && match.winnerSide === "a"
 																	? "bg-green-100"
@@ -787,6 +1933,7 @@ export default function AdminBracketRoute() {
 
 														{/* サイドB */}
 														<div
+															data-testid="participant-b"
 															className={`flex items-center justify-between rounded p-2 ${
 																match.isCompleted && match.winnerSide === "b"
 																	? "bg-green-100"
@@ -882,8 +2029,9 @@ export default function AdminBracketRoute() {
 									)}
 								</section>
 							))}
+							</div>
 						</div>
-					</div>
+					)
 				)}
 			</section>
 		</div>

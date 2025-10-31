@@ -40,8 +40,18 @@ export default {
 			});
 			return await handleRemixRequest(request, loadContext);
 		} catch (error) {
-			console.log(error);
-			return new Response("An unexpected error occurred", { status: 500 });
+			// ログに詳細なエラー情報を出力
+			console.error("[server] Unexpected error:", {
+				error: error instanceof Error ? error.message : String(error),
+				stack: error instanceof Error ? error.stack : undefined,
+				url: request.url,
+				method: request.method,
+			});
+			// createRequestHandlerは既にエラーハンドリングを行っているため、
+			// 通常はここに到達しない。getLoadContextでのエラーなど、
+			// createRequestHandlerの外で発生したエラーのみここでキャッチされる。
+			// エラーを再スローしてRemixのエラーハンドリングに委譲
+			throw error;
 		}
 	},
 } satisfies ExportedHandler<Env>;

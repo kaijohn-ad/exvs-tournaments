@@ -1,6 +1,6 @@
 # Boost Bracket TODO一覧
 
-最終更新: 2025-10-29 (Kai session - update 9)
+最終更新: 2025-10-30 (勝率ダイアグラム計画追加)
 
 ## ✅ 完了済み
 - [x] SvelteKit プロジェクト初期化と Cloudflare アダプタ設定
@@ -180,8 +180,18 @@
       - ✅ ルートファイル `app/routes/events._index.tsx` 実装完了
       - ✅ イベント一覧表示機能（イベント名・ID・開催日・スラッグ表示）
       - ✅ トーナメント一覧表示機能（各イベントのトーナメント一覧）
+      - ✅ 団体戦一覧表示機能（各イベントの団体戦一覧、ステータス・結果表示）
       - ✅ 公開ブラケットへの導線（トーナメントリンク）
+      - ✅ 公開団体戦ボードへの導線（団体戦リンク）
       - ✅ レスポンシブデザイン対応
+      - ✅ テストケース作成・実行完了
+    - [x] 公開団体戦ボード `/events/:eventId/team-battles/:battleId/board` を Remix 実装
+      - ✅ ルートファイル `app/routes/events.$eventId.team-battles.$battleId.board.tsx` 実装完了
+      - ✅ 団体戦詳細情報表示（チーム名、ステータス、結果）
+      - ✅ スコアボード表示（チームA/Bの勝数集計）
+      - ✅ ラインナップ表示（スロットごとの割当表示）
+      - ✅ 試合一覧表示（スロット順、スコア、勝敗）
+      - ✅ 自動更新機能（5秒間隔）
       - ✅ テストケース作成・実行完了
     - [x] 公開ビュー `/view/[slug]` を Remix 移植
       - ✅ ルートファイル `app/routes/view.$slug.tsx` 実装完了
@@ -241,10 +251,10 @@
   - [x] wrangler.toml/wrangler.json の環境別設定更新
   - [x] Preview/Production環境へのマイグレーション適用
   - [x] ドキュメント更新（Preview/Production前提に変更）
-- [ ] Cloudflare Pages の環境別デプロイ設定確認
-  - [ ] Productionブランチ設定確認（`feature/remix-workers-migration` → 移行完了後 `master`）
-  - [ ] Previewブランチ設定確認（上記以外の全ブランチ）
-  - [ ] 環境変数の環境別設定確認
+- [x] Cloudflare Pages の環境別デプロイ設定確認
+  - [x] Productionブランチ設定確認（`feature/remix-workers-migration` → 移行完了後 `master`）
+  - [x] Previewブランチ設定確認（上記以外の全ブランチ）
+  - [x] 環境変数の環境別設定確認
 - [x] 環境別データベース設定の実装
   - [x] Cloudflare Pages の環境（Preview/Production）による自動DB選択（`wrangler.toml` で設定済み）
   - [x] データベース接続の環境別ログ出力
@@ -253,30 +263,111 @@
     - [x] `logger.server.ts` にDB接続ログ出力機能を実装
     - [x] `load-context.ts` と `database.server.ts` にログ出力を統合
     - [x] ログ出力のテストケース作成（`db-logging.test.ts`）
-- [ ] テスト環境の整備
+- [x] テスト環境の整備
   - [x] Preview環境（`exvs-tournaments-dev`）がテスト環境として利用可能
-  - [ ] CI/CDでのPreview環境利用
+  - [x] CI/CDでのPreview環境利用
+
+### 優先度高：データ整合性・履歴管理の改善
+- [x] ペアの論理削除実装（統一ID保持のため）
+  - [x] D1マイグレーション作成：`pairs`テーブルに`deleted_at TEXT`カラムを追加
+  - [x] D1リポジトリ修正：`deletePair`を論理削除に変更（`deleted_at`を設定）
+  - [x] D1リポジトリ修正：`listPairs`で`deleted_at IS NULL`のもののみ取得
+  - [x] メモリリポジトリ修正：論理削除に対応（`deleted_at`フィールド追加）
+  - [x] 外部キー参照の考慮：`bracket_matches`、`team_battle_slots`、`matches`などで削除済みペアが参照されないよう制約確認
+  - [x] テスト更新：論理削除の動作確認テストを追加
+  - [x] UI更新：削除済みペアが一覧に表示されないことを確認（`listPairs`のフィルタにより自動対応）
+- [x] プレイヤーの論理削除実装（統一ID保持とデータ整合性のため）
+  - [x] D1マイグレーション作成：`players`テーブルに`deleted_at TEXT`カラムを追加
+  - [x] D1リポジトリ修正：`deletePlayer`を論理削除に変更（`deleted_at`を設定）
+  - [x] D1リポジトリ修正：`listPlayers`で`deleted_at IS NULL`のもののみ取得
+  - [x] メモリリポジトリ修正：論理削除に対応（`deleted_at`フィールド追加）
+  - [x] 外部キー参照の考慮：以下のテーブルで削除済みプレイヤーが参照されないよう確認（UIは`listPlayers`フィルタで除外。ソフト削除はFKを発火しないため、参照側の一覧/取得でも必要に応じフィルタ方針を継続検討）
+    - `pairs`（`player1_id`, `player2_id` - 現在は`ON DELETE CASCADE`でペアが削除される）
+    - `team_members`（`player_id` - 現在は`ON DELETE CASCADE`でチームメンバーが削除される）
+    - `matches`（`side_a_player1_id`, `side_a_player2_id`, `side_b_player1_id`, `side_b_player2_id` - 現在は`ON DELETE SET NULL`）
+    - `match_participations`（`player_id` - 現在は`ON DELETE CASCADE`で参加記録が削除される）
+    - `player_stats`（`player_id` - 現在は`ON DELETE CASCADE`で統計が削除される）
+    - `tournament_participants`（`player_id` - 現在は`ON DELETE CASCADE`で参加者が削除される）
+  - [x] テスト更新：論理削除の動作確認テストを追加
+  - [x] UI更新：削除済みプレイヤーが一覧に表示されないことを確認
 
 ### 優先度高：トーナメントブラケット機能
-- [ ] トーナメント参加者登録機能
-  - [ ] ペア登録機能（既存ペアから選択）
-  - [ ] プレイヤー登録機能（個別参加）
-  - [ ] 参加者一覧表示機能
-  - [ ] 参加者削除機能
-  - [ ] 参加者情報編集機能
-- [ ] トーナメント参加者管理UI
-  - [ ] 参加者登録フォーム
-  - [ ] 参加者一覧テーブル
-  - [ ] 参加者検索・フィルタ機能
-  - [ ] 参加者ステータス管理
+- [x] トーナメント参加者登録機能
+  - [x] ペア登録機能（既存ペアから選択）
+  - [x] プレイヤー登録機能（個別参加）
+  - [x] 参加者一覧表示機能
+  - [x] 参加者削除機能
+  - [x] 参加者情報編集機能（シード設定）
+  - [x] 参加モード切替機能（pair/solo）
+  - [x] 参加モード変更時の制約チェック（参加者が0件でないと変更不可）
+  - [x] ブラケット生成時の参加者参照（トーナメント参加者のみから生成）
+- [x] トーナメント参加者管理UI
+  - [x] 参加者登録フォーム（ペア/個別選択）
+  - [x] 参加者一覧表示
+  - [x] 参加者削除機能
+  - [x] シード編集機能（ペア参加時）
+  - [x] 参加モード切替UI（トーナメント設定画面）
+- [x] 個別参加モードでのブラケット生成機能
+  - [x] 個別参加モード（solo）でのブラケット生成ロジック実装（2025-01-27）
+    - `remix/app/repositories/solo-pairing.ts` にペアリングユーティリティを実装
+    - `remix/app/routes/admin.events.$eventId.tournaments.tsx` でsoloモード対応を追加
+    - 既存ペアを優先的に再利用し、残りをランダムにペアリング
+    - 奇数人数の場合はエラーを返す
+  - [x] 個別参加者のペアリング機能（自動または手動）（2025-01-27）
+    - 手動ペアリング: `participants.tsx` にプレイヤー2名選択フォームを追加
+    - 自動ペアリング: 参加登録済みのsolo参加者を自動的に2人1組にペアリング
+    - 既存ペアを優先的に再利用し、不足分のみ新規作成
+  - [x] 個別参加モード用のブラケット表示UI（2025-01-27）
+    - 既存のブラケット表示UI（`bracket.tsx`）はペア前提のため、soloモードで生成されたペアもそのまま表示可能
+    - 追加のUI変更は不要（生成時に既存ペアまたは新規作成ペアが使用されるため）
 ### 優先度中：公開ビューの完成
 - [x] 公開イベント一覧ページの実装
   - [x] `/events` でイベントカードを一覧表示（基本情報・開催日）
   - [x] 個別トーナメント公開ページへの導線を設置
-- [ ] イベント情報の表示改善
+- [x] イベント情報の表示改善
   - 参加者一覧
   - スケジュール表示
   - 結果サマリー
+
+### 優先度中：スケジュール表示の改善
+- [x] 未開始のブラケットマッチをスケジュールに表示する機能
+  - [x] スケジュール画面で`bracket_matches`テーブルから未開始（`status='pending'`）の試合も取得
+  - [x] `bracket_matches`の試合を`MatchRecord`形式に変換して表示
+  - [x] `matches`テーブルの試合と`bracket_matches`の未開始試合を統合して表示
+  - [x] 日時未設定の未開始試合も「日時未設定」として表示
+  - [x] BYEの表示対応（`isBracketMatch`フラグでBYE情報を保持）
+
+### 優先度中：UIテスト・E2Eテスト改善
+- [x] コード側で`data-testid`属性を追加（ブラウザ自動化テストの安定化）
+  - [x] フォーム要素に`data-testid`属性を追加（`select[name="pairId"]` → `data-testid="pair-select"`）
+  - [x] ボタン要素に`data-testid`属性を追加（`button[type="submit"]` → `data-testid="add-pair-button"`）
+  - [x] 主要なUI要素に`data-testid`属性を追加（ペア選択、参加者一覧、ブラケット表示など）
+  - [x] JavaScriptの`evaluate`で`querySelector('[data-testid="..."]')`を使えるようにする
+
+### 優先度中：勝率ダイアグラム（プレイヤー/ペア間）
+- [ ] 機能概要策定
+  - [ ] ペア間・プレイヤー間の対戦勝率をヒートマップで可視化
+  - [ ] フィルタ: イベント/トーナメント/期間/最小対戦数
+  - [ ] 表示切替: プレイヤー単位 / ペア単位
+- [ ] 集計リポジトリの実装
+  - [ ] `remix/app/repositories/matchup-stats.ts`（D1/Memory）を新設
+  - [ ] 対戦組合せごとの試合数・勝数・勝率・直近N試合を集計
+  - [ ] 簡易キャッシュ（イベント単位）と試合登録時の無効化フック
+- [ ] ルート/ローダーの追加
+  - [ ] 管理: `remix/app/routes/admin.events.$eventId.stats.matchups.tsx`
+  - [ ] 公開: `remix/app/routes/events.$eventId.stats.matchups.tsx`（任意）
+  - [ ] Loaderでフィルタパラメータのバリデーションと型付け
+- [ ] UI 実装（ダイアグラム）
+  - [ ] マトリクス・ヒートマップ（行・列=プレイヤー/ペア、セル=勝率）
+  - [ ] 凡例/ツールチップ/ゼロ試合セルのハッチ・グレーアウト表現
+  - [ ] 色覚多様性に配慮したカラーパレット（ダーク/ライト共通）
+  - [ ] 検索・固定表示（ピン留め）・スクロール最適化
+- [ ] テスト
+  - [ ] リポジトリ単体テスト（集計の正当性、閾値/期間フィルタ）
+  - [ ] ルートLoaderテスト（フィルタと権限制御）
+  - [ ] UIテスト（セル数、ツールチップ、凡例の表示）
+- [ ] ドキュメント
+  - [ ] 本ファイルおよび必要に応じて`docs/deployment.md`を更新
 
 ### 優先度低：本番環境セットアップ（手動作業）
 - [x] D1データベースの本番環境セットアップ
@@ -290,14 +381,70 @@
   - [x] `CLOUDFLARE_API_TOKEN` の登録
   - [x] `CLOUDFLARE_ACCOUNT_ID` の登録
 - [ ] トーナメント機能拡張（本番セットアップ完了後）
-  - ブラケットのシャッフル／固定切り替え
-    - **シャッフル**: 参加チームを試合ごとに都度ランダムペアリング。
-      - EXVSゲーム内では、4人1グループで対戦し勝ち上がり2枠を決定するため、本システムではブラケットに4名を割り当て、その中で2名の勝ち上がりを入力して、次のブラケットに割り当てることを行う。
-    - **固定**: ブラケット生成時のチームを固定する。すでに実装済みのチームを設定してそのトーナメントを作成するもの。
-  - シングル／ダブルエリミネーション形式の切り替え
-  - 団体戦の勝ち抜き戦の追加と早稲田式との切り替え
-  - 団体戦の自動チーム分け機能（メンバーをチームに分けてからペアの出る順番は登録できる）
-  - 勝ち抜き戦でお互い大将まで行かなかった場合には、全員遊べるように味方同士で最後戦うように案内する
+  - [x] ブラケットのシャッフル／固定切り替え（FFA 2-up形式実装済み）
+    - [x] **シャッフル**: 参加チームを試合ごとに都度ランダムペアリング。
+      - EXVSゲーム内では、4人1グループで対戦し勝ち上がり2枠を決定するため、本システムではブラケットに4名を割り当て、その中で2名の勝ち上がりを　次のブラケットにり割り当てることを行う。
+      - **実装完了**: FFA 2-up形式を実装。4人1グループで上位2名が勝ち上がる形式をサポート。
+    - [x] **固定**: ブラケット生成時のチームを固定する。すでに実装済みのチームを設定してそのトーナメントを作成するもの。
+  - [x] シングル／ダブルエリミネーション形式の切り替え
+  - [x] 団体戦の勝ち抜き戦の追加と早稲田式との切り替え
+  - [x] 団体戦の自動チーム分け機能（メンバーをチームに分けてからペアの出る順番は登録できる）
+    - 実装完了: プレイヤーをランダム均等に2分割し、オプションで勝ち抜き戦団体戦を同時作成する機能を追加
+    - ラインナップ編集画面で個別プレイヤー（adhoc）として登録可能
+  - [x] 勝ち抜き戦でお互い大将まで行かなかった場合には、全員遊べるように味方同士で最後戦うように案内する
+    - 実装完了: 試合終了時かつ大将まで到達していない場合、残ったプレイヤー情報を表示する案内メッセージを追加
+
+### 優先度高：公開ペア登録とマニュアル実装
+- [ ] D1スキーマ追加（0002）
+  - [ ] `events`テーブルに公開受付設定カラム追加（`public_registration_enabled`, `public_registration_code`, `public_registration_deadline`）
+  - [ ] `player_credentials`テーブル作成（`username`, `password_hash`, `must_change_password`, `email`, `reset_token`等）
+  - [ ] `tournament_entries`テーブル作成（トーナメント参加申請、ステータス管理、相方同意フラグ）
+  - [ ] `team_applications`テーブル作成（チーム新規申請）
+  - [ ] `team_battle_entries`テーブル作成（団体戦参加申請）
+- [ ] 認証・セッション機能
+  - [ ] Cookieセッション実装（`__player_session`）
+  - [ ] PBKDF2-SHA256パスワードハッシュ実装（Workers対応）
+  - [ ] パスワードリセット機能（メールトークン生成・検証）
+- [ ] リポジトリ層実装
+  - [ ] `remix/app/repositories/auth.ts`（D1/Memory）: 認証関連（`createCredentials`, `verifyPassword`, `updatePassword`, `setResetToken`, `consumeResetToken`）
+  - [ ] `remix/app/repositories/tournament-entries.ts`: トーナメント参加申請（`createEntry`, `getEntry`, `confirmByPlayer`, `submitIfBothConfirmed`, `approve`, `reject`）
+  - [ ] `remix/app/repositories/team-applications.ts`: チーム新規申請（`create`, `approve`（承認時に`teams`作成）, `reject`）
+  - [ ] `remix/app/repositories/team-battle-entries.ts`: 団体戦参加申請（`create`, `approve`, `reject`）
+  - [ ] `database.server.ts`に各リポジトリのラップを追加（D1/Memory両対応）
+- [ ] 公開登録ルート実装
+  - [ ] `remix/app/routes/register._index.tsx`: 登録入口（イベント一覧＋「ペア登録」リンク）
+  - [ ] `remix/app/routes/view.$slug.register.tsx`: ペア登録フロー（パスコード→ログイン→ペア選択/作成→大会選択→申請）
+  - [ ] `remix/app/routes/view.$slug.team-register.tsx`: チーム新規申請＋団体戦への参加申請
+  - [ ] `remix/app/routes/manual.tsx`: マニュアル/FAQページ
+- [ ] 認証ルート実装
+  - [ ] `remix/app/routes/auth.login.tsx`: username+passwordログイン
+  - [ ] `remix/app/routes/auth.logout.tsx`: ログアウト
+  - [ ] `remix/app/routes/auth.change-password.tsx`: 初回変更用フォーム（`must_change_password`解消）
+  - [ ] `remix/app/routes/auth.reset.tsx`: メールによるパスワードリセット（任意設定後利用可能）
+- [ ] 管理者UI実装
+  - [ ] `remix/app/routes/admin.events.$eventId.settings.tsx`: 公開受付設定（ON/OFF・パスコード・締切・上限）
+  - [ ] `remix/app/routes/admin.events.$eventId.entries.players.credentials.tsx`: プレイヤーに対する`username`/初期PWの発行・再発行・メール設定（配布用表示）
+  - [ ] `remix/app/routes/admin.events.$eventId.tournaments.$tournamentId.entries.tsx`: トーナメント参加申請の承認/却下
+  - [ ] `remix/app/routes/admin.events.$eventId.teams.applications.tsx`: チーム新規申請の承認/却下
+  - [ ] `remix/app/routes/admin.events.$eventId.team-battles.$battleId.entries.tsx`: 団体戦参加申請の承認/却下
+- [ ] 本番環境のみBasic認証
+  - [ ] `remix/app/entry.server.tsx`に`/admin`パスでのBasic認証を注入（Previewでは無効、Productionのみ）
+  - [ ] `BASIC_AUTH_USER`/`BASIC_AUTH_PASS`が設定されている時のみ有効化
+- [ ] 相方同意の原子的遷移実装
+  - [ ] `tournament_entries`の`confirmByPlayer`でトランザクションを使用して同時書き込みを防止
+  - [ ] 両者が同意完了した時点で`status`を`awaiting_partner`→`submitted`へ自動遷移
+  - [ ] SQL `BEGIN IMMEDIATE`/`COMMIT`での原子的更新を実装
+- [ ] 公開側導線追加
+  - [ ] `events._index.tsx`に各イベントカードに「公開ページ」「ペア登録」リンクを追加（受付ON時のみ表示）
+  - [ ] `register._index.tsx`でイベント一覧とスラッグ導線を提供
+- [ ] テスト実装
+  - [ ] 認証リポジトリの単体テスト（ハッシュ検証、リセットトークン生成・検証）
+  - [ ] エントリリポジトリの単体テスト（相方同意の原子的遷移、承認API）
+  - [ ] ルートアクションテスト（`view.$slug.register`の成功/権限制御/締切/コード誤りケース）
+  - [ ] 管理承認画面のテスト
+- [ ] ドキュメント更新
+  - [ ] `docs/TODO.md`に新セクションを追記（公開登録・団体戦申請・マニュアル）
+  - [ ] `docs/deployment.md`にBasic認証（本番のみ）とメール送信（任意）の設定手順を追記
 
 ---
 

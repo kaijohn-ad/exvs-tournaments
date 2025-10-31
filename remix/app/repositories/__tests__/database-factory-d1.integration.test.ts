@@ -121,6 +121,9 @@ describe("Database Factory D1 Integration Tests", () => {
 			name: "Test Tournament"
 		});
 
+		// ペアをトーナメント参加者として登録
+		await database.tournamentParticipants.addPair(tournament.id, pair.id);
+
 		// チームを作成
 		const team = await database.teams.createTeam(event.id, { name: "Test Team" });
 
@@ -242,12 +245,22 @@ describe("Database Factory D1 Integration Tests", () => {
 			pairs.push(pair);
 		}
 
+		// トーナメントを作成
+		const tournament = await database.tournaments.createTournament(event.id, {
+			name: "Transaction Test Tournament"
+		});
+
+		// ペアをトーナメント参加者として登録
+		for (const pair of pairs) {
+			await database.tournamentParticipants.addPair(tournament.id, pair.id);
+		}
+
 		// 複数のマッチを作成
 		const matches = [];
 		for (let i = 0; i < pairs.length; i++) {
 			const match = await database.matches.createMatch({
 				context: "bracket",
-				context_id: "tournament-1",
+				context_id: tournament.id,
 				side_a_type: "pair",
 				side_a_pair_id: pairs[i].id,
 				side_b_type: "pair",

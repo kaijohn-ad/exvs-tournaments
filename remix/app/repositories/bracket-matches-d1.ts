@@ -37,6 +37,7 @@ const hasKey = <T extends object>(object: T, key: keyof any): boolean => {
 const mapRowToRecord = (row: any): BracketMatchRecord => ({
 	id: row.id,
 	tournament_id: row.tournament_id,
+	bracket: (row.bracket ?? 'winners') as 'winners' | 'losers' | 'grand-finals',
 	round: row.round,
 	position: row.position,
 	participant_a_type: row.participant_a_type,
@@ -50,6 +51,38 @@ const mapRowToRecord = (row: any): BracketMatchRecord => ({
 	created_at: row.created_at
 });
 
+const validatePairForBracketMatch = async (
+	db: D1Database,
+	tournamentId: string,
+	pairId: string | null
+): Promise<void> => {
+	if (!pairId) {
+		return;
+	}
+
+	// Check that pair exists and is not deleted
+	const pair = await db
+		.prepare('SELECT id FROM pairs WHERE id = ? AND deleted_at IS NULL')
+		.bind(pairId)
+		.first<{ id: string }>();
+
+	if (!pair) {
+		throw new Error('ペアが見つかりません。');
+	}
+
+	// Check that pair is registered as an active participant in this tournament
+	const participant = await db
+		.prepare(
+			'SELECT id FROM tournament_participants WHERE tournament_id = ? AND pair_id = ? AND status = \'active\''
+		)
+		.bind(tournamentId, pairId)
+		.first<{ id: string }>();
+
+	if (!participant) {
+		throw new Error('このペアはトーナメントの参加者として登録されていません。');
+	}
+};
+
 export const createBracketMatchesRepositoryD1 = (db: D1Database) => {
 	return {
         async createBracketMatch(
@@ -58,20 +91,31 @@ export const createBracketMatchesRepositoryD1 = (db: D1Database) => {
         ): Promise<BracketMatchRecord> {
             const id = generateUUID();
             const createdAt = new Date().toISOString();
+            const bracket = (data as any).bracket ?? 'winners';
             const round = sanitizeRound((data as any).round);
             const position = sanitizeRound((data as any).position);
             const status = (data as any).status ?? 'pending';
 
+            // Validate pair participants
+            const participantAType = (data as any).participant_a_type;
+            const participantAPairId = participantAType === 'pair' ? (data as any).participant_a_pair_id ?? null : null;
+            const participantBType = (data as any).participant_b_type;
+            const participantBPairId = participantBType === 'pair' ? (data as any).participant_b_pair_id ?? null : null;
+
+            await validatePairForBracketMatch(db, tournamentId, participantAPairId);
+            await validatePairForBracketMatch(db, tournamentId, participantBPairId);
+
             await db
                 .prepare(
                     `INSERT INTO bracket_matches
-                    (id, tournament_id, round, position, participant_a_type, participant_a_pair_id,
+                    (id, tournament_id, bracket, round, position, participant_a_type, participant_a_pair_id,
                         participant_b_type, participant_b_pair_id, score_a, score_b, winner_side, status, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
                 )
                 .bind(
                     id,
                     tournamentId,
+                    bracket,
                     round,
                     position,
                     (data as any).participant_a_type,
@@ -89,6 +133,7 @@ export const createBracketMatchesRepositoryD1 = (db: D1Database) => {
             return {
                 id,
                 tournament_id: tournamentId,
+                bracket,
                 round,
                 position,
                 participant_a_type: (data as any).participant_a_type,
@@ -105,11 +150,11 @@ export const createBracketMatchesRepositoryD1 = (db: D1Database) => {
 		async listBracketMatches(tournamentId: string): Promise<BracketMatchRecord[]> {
 			const result = await db
 				.prepare(
-					`SELECT id, tournament_id, round, position, participant_a_type, participant_a_pair_id,
+					`SELECT id, tournament_id, bracket, round, position, participant_a_type, participant_a_pair_id,
 						participant_b_type, participant_b_pair_id, score_a, score_b, winner_side, status, created_at
 					FROM bracket_matches
 					WHERE tournament_id = ?
-					ORDER BY round ASC, position ASC`
+					ORDER BY bracket ASC, round ASC, position ASC`
 				)
 				.bind(tournamentId)
 				.all<any>();
@@ -123,7 +168,7 @@ export const createBracketMatchesRepositoryD1 = (db: D1Database) => {
 		): Promise<BracketMatchRecord> {
 			const row = await db
 				.prepare(
-					`SELECT id, tournament_id, round, position, participant_a_type, participant_a_pair_id,
+					`SELECT id, tournament_id, bracket, round, position, participant_a_type, participant_a_pair_id,
 						participant_b_type, participant_b_pair_id, score_a, score_b, winner_side, status, created_at
 					FROM bracket_matches
 					WHERE tournament_id = ? AND id = ?`
@@ -145,6 +190,7 @@ export const createBracketMatchesRepositoryD1 = (db: D1Database) => {
 		): Promise<BracketMatchRecord> {
 			const existing = await this.ensureBracketMatch(tournamentId, matchId);
 
+			const bracket = data.bracket ?? existing.bracket;
 			const round = sanitizeWithFallback(data.round, existing.round);
 			const position = sanitizeWithFallback(data.position, existing.position);
 
@@ -166,6 +212,10 @@ export const createBracketMatchesRepositoryD1 = (db: D1Database) => {
 				participantBPairIdRaw
 			);
 
+			// Validate pair participants
+			await validatePairForBracketMatch(db, tournamentId, participantAPairId);
+			await validatePairForBracketMatch(db, tournamentId, participantBPairId);
+
 			const scoreA = hasKey(data, 'score_a') ? data.score_a ?? null : existing.score_a;
 			const scoreB = hasKey(data, 'score_b') ? data.score_b ?? null : existing.score_b;
 			const winnerSide = hasKey(data, 'winner_side')
@@ -176,12 +226,13 @@ export const createBracketMatchesRepositoryD1 = (db: D1Database) => {
 			await db
 				.prepare(
 					`UPDATE bracket_matches
-					SET round = ?, position = ?, participant_a_type = ?, participant_a_pair_id = ?,
+					SET bracket = ?, round = ?, position = ?, participant_a_type = ?, participant_a_pair_id = ?,
 						participant_b_type = ?, participant_b_pair_id = ?, score_a = ?, score_b = ?,
 						winner_side = ?, status = ?
 					WHERE tournament_id = ? AND id = ?`
 				)
 				.bind(
+					bracket,
 					round,
 					position,
 					participantAType,
@@ -199,6 +250,7 @@ export const createBracketMatchesRepositoryD1 = (db: D1Database) => {
 
 			return {
 				...existing,
+				bracket,
 				round,
 				position,
 				participant_a_type: participantAType,
@@ -225,6 +277,7 @@ export const createBracketMatchesRepositoryD1 = (db: D1Database) => {
 			const inserted: BracketMatchRecord[] = [];
 
 			for (const match of matches) {
+				const bracket = match.bracket ?? 'winners';
 				const round = sanitizeRound(match.round);
 				const position = sanitizeRound(match.position);
 				const id = match.id ?? generateUUID();
@@ -234,16 +287,23 @@ export const createBracketMatchesRepositoryD1 = (db: D1Database) => {
 				const scoreB = match.score_b ?? null;
 				const winnerSide = match.winner_side ?? null;
 
+				// Validate pair participants
+				const participantAPairId = match.participant_a_type === 'pair' ? match.participant_a_pair_id ?? null : null;
+				const participantBPairId = match.participant_b_type === 'pair' ? match.participant_b_pair_id ?? null : null;
+				await validatePairForBracketMatch(db, tournamentId, participantAPairId);
+				await validatePairForBracketMatch(db, tournamentId, participantBPairId);
+
 				await db
 					.prepare(
 						`INSERT INTO bracket_matches
-						(id, tournament_id, round, position, participant_a_type, participant_a_pair_id,
+						(id, tournament_id, bracket, round, position, participant_a_type, participant_a_pair_id,
 							participant_b_type, participant_b_pair_id, score_a, score_b, winner_side, status, created_at)
-						VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+						VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 					)
 					.bind(
 						id,
 						tournamentId,
+						bracket,
 						round,
 						position,
 						match.participant_a_type,
@@ -261,6 +321,7 @@ export const createBracketMatchesRepositoryD1 = (db: D1Database) => {
 				inserted.push({
 					id,
 					tournament_id: tournamentId,
+					bracket,
 					round,
 					position,
 					participant_a_type: match.participant_a_type,

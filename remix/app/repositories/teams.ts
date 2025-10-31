@@ -13,6 +13,7 @@ export interface TeamRecord extends TeamData {
 }
 
 const store = new Map<string, Map<string, TeamRecord>>();
+const teamMembersStore = new Map<string, Set<string>>();
 
 const getEventStore = (eventId: string) => {
 	let eventStore = store.get(eventId);
@@ -23,6 +24,15 @@ const getEventStore = (eventId: string) => {
 	}
 
 	return eventStore;
+};
+
+const getTeamMembers = (teamId: string): Set<string> => {
+	let members = teamMembersStore.get(teamId);
+	if (!members) {
+		members = new Set();
+		teamMembersStore.set(teamId, members);
+	}
+	return members;
 };
 
 export const listTeams = (eventId: string): TeamRecord[] => {
@@ -68,6 +78,9 @@ export const deleteTeam = (eventId: string, teamId: string): void => {
 	if (!didDelete) {
 		throw new Error('Team not found');
 	}
+
+	// チームメンバーも削除
+	teamMembersStore.delete(teamId);
 };
 
 export const setTeams = (eventId: string, teams: TeamImportData[]): TeamRecord[] => {
@@ -94,8 +107,15 @@ export const setTeams = (eventId: string, teams: TeamImportData[]): TeamRecord[]
 
 export const __resetForTests = () => {
 	store.clear();
+	teamMembersStore.clear();
 };
 
-export const addTeamMember = (_teamId: string, _playerId: string): void => {
-	// Memory store does not track team members; this is a no-op for parity with D1 implementation.
+export const addTeamMember = (teamId: string, playerId: string): void => {
+	const members = getTeamMembers(teamId);
+	members.add(playerId);
+};
+
+export const listTeamMemberIds = (teamId: string): string[] => {
+	const members = getTeamMembers(teamId);
+	return Array.from(members);
 };

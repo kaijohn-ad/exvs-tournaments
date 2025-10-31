@@ -91,6 +91,26 @@ export async function loader({ params, context }: LoaderFunctionArgs) {
 			dbExists: !!context.db,
 			cloudflareEnv: context.cloudflare?.env ? Object.keys(context.cloudflare.env) : "undefined"
 		});
+
+		// データベース接続エラーの場合、より明確なエラーメッセージを返す
+		if (error instanceof Error) {
+			if (error.message.includes("D1 database is not available")) {
+				throw new Response(
+					"D1データベースが利用できません。データベースの設定を確認してください。",
+					{ status: 503 }
+				);
+			}
+
+			// D1スキーマ未初期化エラー（no such table）を検知
+			if (error.message.includes("no such table") || error.message.includes("no such column")) {
+				throw new Response(
+					"データベースが初期化されていません。マイグレーションを実行してください。",
+					{ status: 503 }
+				);
+			}
+		}
+
+		// その他のエラーはそのまま再スロー
 		throw error;
 	}
 }
@@ -440,17 +460,26 @@ export default function PairsRoute() {
 	const [editorOpen, setEditorOpen] = useState(false);
 	const [editorPayload, setEditorPayload] = useState(pairsJson);
 	const [editorError, setEditorError] = useState<string | null>(null);
-
-	const downloadUrl = useMemo(() => {
-		const blob = new Blob([pairsJson], { type: "application/json" });
-		return URL.createObjectURL(blob);
-	}, [pairsJson]);
+	const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
 
 	useEffect(() => {
-		return () => {
-			URL.revokeObjectURL(downloadUrl);
-		};
-	}, [downloadUrl]);
+		// SSR時は実行しない（クライアント側でのみ実行）
+		if (typeof window === "undefined" || typeof URL === "undefined" || typeof Blob === "undefined") {
+			return;
+		}
+
+		try {
+			const blob = new Blob([pairsJson], { type: "application/json" });
+			const url = URL.createObjectURL(blob);
+			setDownloadUrl(url);
+			return () => {
+				URL.revokeObjectURL(url);
+			};
+		} catch (error) {
+			// Blob作成に失敗した場合は何もしない（SSR環境など）
+			console.warn("Failed to create blob URL:", error);
+		}
+	}, [pairsJson]);
 
 	useEffect(() => {
 		if (actionData?.type === "error") {
@@ -653,6 +682,7 @@ export default function PairsRoute() {
 									<div className="flex flex-wrap gap-3">
 										<button
 											type="submit"
+											data-testid="update-pair-button"
 											disabled={isSubmitting}
 											className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
 										>
@@ -663,6 +693,7 @@ export default function PairsRoute() {
 											<input type="hidden" name="pairId" value={pair.id} />
 											<button
 												type="submit"
+												data-testid="delete-pair-button"
 												disabled={isSubmitting}
 												className="rounded-lg border border-rose-300 px-4 py-2 text-sm font-medium text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:border-rose-200 disabled:text-rose-300"
 												onClick={(event) => {

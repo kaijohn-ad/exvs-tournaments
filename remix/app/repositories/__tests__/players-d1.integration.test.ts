@@ -198,4 +198,24 @@ describe("Players D1 Integration Tests", () => {
 		expect(players2[0].id).toBe(player2.id);
 		expect(players2[0].name).toBe("Player in Event 2");
 	});
+
+	test("should not return soft-deleted player (list/ensure)", async () => {
+		const database = getTestDatabaseContext();
+
+		const created = await database.players.createPlayer(eventId, { name: "SoftDelete Target" });
+
+		// sanity
+		let players = await database.players.listPlayers(eventId);
+		expect(players.find(p => p.id === created.id)).toBeDefined();
+
+		// soft delete
+		await database.players.deletePlayer(created.id);
+
+		// list should exclude
+		players = await database.players.listPlayers(eventId);
+		expect(players.find(p => p.id === created.id)).toBeUndefined();
+
+		// ensure should throw
+		await expect(database.players.ensurePlayer(created.id)).rejects.toThrow('Player not found');
+	});
 });

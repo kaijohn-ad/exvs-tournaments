@@ -3,6 +3,8 @@ import { setupTestDatabase, cleanupTestDatabase, getTestDatabaseContext } from "
 
 describe("Matches D1 Integration Tests", () => {
 	let eventId: string;
+	let tournamentId: string;
+	let teamBattleId: string;
 	let player1Id: string;
 	let player2Id: string;
 	let player3Id: string;
@@ -46,6 +48,29 @@ describe("Matches D1 Integration Tests", () => {
 		
 		pair1Id = pair1.id;
 		pair2Id = pair2.id;
+
+		// テスト用のトーナメントを作成
+		const tournament = await database.tournaments.createTournament(eventId, {
+			name: "Test Tournament",
+			entryMode: "pair"
+		});
+		tournamentId = tournament.id;
+
+		// ペアをトーナメント参加者として登録
+		await database.tournamentParticipants.addPair(tournamentId, pair1Id);
+		await database.tournamentParticipants.addPair(tournamentId, pair2Id);
+
+		// テスト用のチームを作成
+		const team1 = await database.teams.createTeam(eventId, { name: "Team 1" });
+		const team2 = await database.teams.createTeam(eventId, { name: "Team 2" });
+
+		// テスト用のチームバトルを作成
+		const teamBattle = await database.teamBattles.createTeamBattle(eventId, {
+			team_a_id: team1.id,
+			team_b_id: team2.id,
+			slots_count: 3
+		});
+		teamBattleId = teamBattle.id;
 	});
 
 	afterEach(async () => {
@@ -57,7 +82,7 @@ describe("Matches D1 Integration Tests", () => {
 
 		const matchData = {
 			context: "bracket" as const,
-			context_id: "tournament-1",
+			context_id: tournamentId,
 			side_a_type: "pair" as const,
 			side_a_pair_id: pair1Id,
 			side_b_type: "pair" as const,
@@ -130,7 +155,7 @@ describe("Matches D1 Integration Tests", () => {
 		// 異なるコンテキストのマッチを作成
 	const bracketMatch = await database.matches.createMatch({
 		context: "bracket" as const,
-		context_id: "tournament-1",
+		context_id: tournamentId,
 		side_a_type: "pair" as const,
 		side_a_pair_id: pair1Id,
 		side_b_type: "pair" as const,
@@ -143,7 +168,7 @@ describe("Matches D1 Integration Tests", () => {
 
 	const teamBattleMatch = await database.matches.createMatch({
 		context: "teamBattle" as const,
-		context_id: "team-battle-1",
+		context_id: teamBattleId,
 		side_a_type: "pair" as const,
 		side_a_pair_id: pair1Id,
 		side_b_type: "pair" as const,
@@ -155,8 +180,8 @@ describe("Matches D1 Integration Tests", () => {
 	});
 
 		// コンテキスト別にマッチを取得
-		const bracketMatches = await database.matches.listMatches("bracket", "tournament-1");
-		const teamBattleMatches = await database.matches.listMatches("teamBattle", "team-battle-1");
+		const bracketMatches = await database.matches.listMatches("bracket", tournamentId);
+		const teamBattleMatches = await database.matches.listMatches("teamBattle", teamBattleId);
 
 		expect(bracketMatches).toHaveLength(1);
 		expect(bracketMatches[0].id).toBe(bracketMatch.id);
@@ -172,7 +197,7 @@ describe("Matches D1 Integration Tests", () => {
 
 	const matchData = {
 		context: "bracket" as const,
-		context_id: "tournament-1",
+		context_id: tournamentId,
 		side_a_type: "pair" as const,
 		side_a_pair_id: pair1Id,
 		side_b_type: "pair" as const,
@@ -213,7 +238,7 @@ describe("Matches D1 Integration Tests", () => {
 
 	const matchData = {
 		context: "bracket" as const,
-		context_id: "tournament-1",
+		context_id: tournamentId,
 		side_a_type: "pair" as const,
 		side_a_pair_id: pair1Id,
 		side_b_type: "pair" as const,
@@ -244,7 +269,7 @@ describe("Matches D1 Integration Tests", () => {
 		const matchesData = [
 			{
 				context: "bracket" as const,
-				context_id: "tournament-1",
+				context_id: tournamentId,
 				side_a_type: "pair" as const,
 				side_a_pair_id: pair1Id,
 				side_b_type: "pair" as const,
@@ -256,7 +281,7 @@ describe("Matches D1 Integration Tests", () => {
 			},
 			{
 				context: "teamBattle" as const,
-				context_id: "team-battle-1",
+				context_id: teamBattleId,
 				side_a_type: "adhoc" as const,
 				side_a_player1_id: player1Id,
 				side_a_player2_id: player2Id,
@@ -298,7 +323,7 @@ describe("Matches D1 Integration Tests", () => {
 		// 異なる時間でマッチを作成
 	const match1 = await database.matches.createMatch({
 		context: "bracket" as const,
-		context_id: "tournament-1",
+		context_id: tournamentId,
 		side_a_type: "pair" as const,
 		side_a_pair_id: pair1Id,
 		side_b_type: "pair" as const,
@@ -315,7 +340,7 @@ describe("Matches D1 Integration Tests", () => {
 
 	const match2 = await database.matches.createMatch({
 		context: "bracket" as const,
-		context_id: "tournament-1",
+		context_id: tournamentId,
 		side_a_type: "pair" as const,
 		side_a_pair_id: pair1Id,
 		side_b_type: "pair" as const,

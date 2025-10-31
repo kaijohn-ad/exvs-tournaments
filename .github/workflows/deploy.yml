@@ -5,6 +5,8 @@ on:
     branches:
       - master
       - develop
+  pull_request:
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
     inputs:
       environment:
@@ -19,9 +21,15 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+      cancel-in-progress: true
+    environment:
+      name: ${{ github.event_name == 'pull_request' && 'preview' || 'production' }}
     permissions:
       contents: read
       deployments: write
+      pull-requests: write
     
     steps:
     - uses: actions/checkout@v4
@@ -41,11 +49,28 @@ jobs:
       working-directory: ./remix
       run: npm run typecheck
 
+    - name: Test
+      working-directory: ./remix
+      env:
+        CI: true
+      run: npm run test -- --run
+
     - name: Build Remix app
       working-directory: ./remix
       run: npm run build
 
+    - name: Apply D1 Migrations to Preview Database
+      if: github.event_name == 'pull_request'
+      working-directory: ./remix
+      env:
+        CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      run: |
+        echo "Applying migrations to Preview D1 database (exvs-tournaments-dev)..."
+        npx wrangler d1 migrations apply exvs-tournaments-dev --remote --env preview
+
     - name: Deploy to Cloudflare Pages
+      id: deploy
       uses: cloudflare/pages-action@v1
       with:
         apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -54,4 +79,40 @@ jobs:
         workingDirectory: ./remix
         directory: build/client
         gitHubToken: ${{ secrets.GITHUB_TOKEN }}
-        branch: ${{ github.ref_name }}
+        branch: ${{ github.head_ref || github.ref_name }}
+
+    - name: Fetch Preview URL
+      if: github.event_name == 'pull_request'
+      id: fetch_preview_url
+      run: |
+        BRANCH="${{ github.head_ref || github.ref_name }}"
+        API_URL="https://api.cloudflare.com/client/v4/accounts/${{ secrets.CLOUDFLARE_ACCOUNT_ID }}/pages/projects/exvs-tournaments/deployments?branch=${BRANCH}&per_page=1"
+        RESPONSE=$(curl -s -H "Authorization: Bearer ${{ secrets.CLOUDFLARE_API_TOKEN }}" "$API_URL")
+        URL=$(echo "$RESPONSE" | jq -r '.result[0].url // empty')
+        if [ -z "$URL" ] || [ "$URL" = "null" ]; then
+          echo "Warning: Could not fetch preview URL from API"
+          exit 0
+        fi
+        echo "url=$URL" >> $GITHUB_OUTPUT
+        echo "Preview URL: $URL"
+
+    - name: Comment Preview URL to PR
+      if: github.event_name == 'pull_request' && steps.fetch_preview_url.outputs.url != ''
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const previewUrl = '${{ steps.fetch_preview_url.outputs.url }}';
+          const comment = `🚀 **Preview environment deployed**
+          
+          Preview URL: ${previewUrl}
+          
+          This preview uses the **Preview D1 database** (\`exvs-tournaments-dev\`).
+          
+          You can test your changes here before merging to master.`;
+          
+          github.rest.issues.createComment({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: context.issue.number,
+            body: comment
+          });

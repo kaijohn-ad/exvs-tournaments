@@ -78,6 +78,7 @@ describe("DB logging", () => {
 				expect(parsed.event).toBe("db.env");
 				expect(parsed.stage).toBe("preview");
 				expect(parsed.hasDB).toBe(true);
+				// Preview環境でもDBがあれば既定でD1を使用
 				expect(parsed.useMemory).toBe(false);
 			}
 		});
@@ -108,9 +109,19 @@ describe("DB logging", () => {
 	});
 
 	describe("getDatabase", () => {
-		test("outputs db.selected log with d1 driver in preview environment", () => {
+		test("outputs db.selected log with d1 driver in preview environment when USE_MEMORY_STORE=false", () => {
 			const d1 = createD1Stub();
-			const context = createContext(d1 as unknown as D1Database, "preview");
+			// USE_MEMORY_STORE=falseを明示的に設定するため、envオブジェクトを再作成
+			const context = {
+				cloudflare: {
+					env: {
+						DB: d1 as unknown as D1Database,
+						ENVIRONMENT_STAGE: "preview",
+						USE_MEMORY_STORE: "false",
+					},
+				},
+				db: d1 as unknown as D1Database,
+			} as unknown as AppLoadContext;
 
 			// NODE_ENVをdevelopment以外に設定
 			const originalNodeEnv = process.env.NODE_ENV;

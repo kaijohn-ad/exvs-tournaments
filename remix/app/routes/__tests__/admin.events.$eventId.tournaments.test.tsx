@@ -3,6 +3,8 @@ import { loader, action } from '../admin.events.$eventId.tournaments';
 import * as tournamentsMemory from '~/repositories/tournaments';
 import * as pairsMemory from '~/repositories/pairs';
 import * as bracketMatchesMemory from '~/repositories/bracket-matches';
+import * as tournamentParticipantsMemory from '~/repositories/tournament-participants';
+import * as playersMemory from '~/repositories/players';
 
 const EVENT_ID = 'event-1';
 
@@ -32,6 +34,8 @@ describe('admin tournaments route', () => {
 		tournamentsMemory.__resetForTests();
 		pairsMemory.__resetForTests();
 		bracketMatchesMemory.__resetForTests();
+		tournamentParticipantsMemory.__resetForTests();
+		playersMemory.__resetForTests();
 	});
 
 	describe('loader', () => {
@@ -249,13 +253,16 @@ describe('admin tournaments route', () => {
 		describe('generate intent', () => {
 			it('generates bracket for tournament', async () => {
 				const tournament = tournamentsMemory.createTournament(EVENT_ID, { name: 'Spring Tournament' });
-				pairsMemory.createPair(EVENT_ID, { player1_id: 'p1', player2_id: 'p2' });
-				pairsMemory.createPair(EVENT_ID, { player1_id: 'p3', player2_id: 'p4' });
+				const pair1 = pairsMemory.createPair(EVENT_ID, { player1_id: 'p1', player2_id: 'p2' });
+				const pair2 = pairsMemory.createPair(EVENT_ID, { player1_id: 'p3', player2_id: 'p4' });
+				
+				// 参加者として登録
+				tournamentParticipantsMemory.addPair(tournament.id, pair1.id);
+				tournamentParticipantsMemory.addPair(tournament.id, pair2.id);
 
 				const formData = createFormData({
 					_intent: 'generate',
 					tournamentId: tournament.id,
-					seedingMode: 'random',
 				});
 
 				const result = await action({
@@ -296,6 +303,115 @@ describe('admin tournaments route', () => {
 				expect(data).not.toBeNull();
 				expect(data!.type).toBe('error');
 				expect(data!.source).toBe('generate');
+			});
+
+			it('generates bracket for solo tournament with even participants', async () => {
+				const tournament = tournamentsMemory.createTournament(EVENT_ID, {
+					name: 'Solo Tournament',
+					entryMode: 'solo'
+				});
+				const player1 = playersMemory.createPlayer(EVENT_ID, { name: 'Player 1' });
+				const player2 = playersMemory.createPlayer(EVENT_ID, { name: 'Player 2' });
+				const player3 = playersMemory.createPlayer(EVENT_ID, { name: 'Player 3' });
+				const player4 = playersMemory.createPlayer(EVENT_ID, { name: 'Player 4' });
+				
+				// Solo参加者として登録
+				tournamentParticipantsMemory.addSolo(tournament.id, player1.id);
+				tournamentParticipantsMemory.addSolo(tournament.id, player2.id);
+				tournamentParticipantsMemory.addSolo(tournament.id, player3.id);
+				tournamentParticipantsMemory.addSolo(tournament.id, player4.id);
+
+				const formData = createFormData({
+					_intent: 'generate',
+					tournamentId: tournament.id,
+				});
+
+				const result = await action({
+					params: { eventId: EVENT_ID },
+					context: mockContext,
+					request: new Request('http://localhost/admin/events/event-1/tournaments', {
+						method: 'POST',
+						body: formData,
+					}),
+				});
+
+				expect(result).toBeInstanceOf(Response);
+				const data = await result.json();
+				expect(data).not.toBeNull();
+				expect(data!.type).toBe('success');
+				expect(data!.source).toBe('generate');
+				
+				// ブラケットマッチが生成されていることを確認
+				const matches = bracketMatchesMemory.listBracketMatches(tournament.id);
+				expect(matches.length).toBeGreaterThan(0);
+			});
+
+			it('fails with odd number of solo participants', async () => {
+				const tournament = tournamentsMemory.createTournament(EVENT_ID, {
+					name: 'Solo Tournament',
+					entryMode: 'solo'
+				});
+				const player1 = playersMemory.createPlayer(EVENT_ID, { name: 'Player 1' });
+				const player2 = playersMemory.createPlayer(EVENT_ID, { name: 'Player 2' });
+				const player3 = playersMemory.createPlayer(EVENT_ID, { name: 'Player 3' });
+				
+				// Solo参加者として登録（奇数）
+				tournamentParticipantsMemory.addSolo(tournament.id, player1.id);
+				tournamentParticipantsMemory.addSolo(tournament.id, player2.id);
+				tournamentParticipantsMemory.addSolo(tournament.id, player3.id);
+
+				const formData = createFormData({
+					_intent: 'generate',
+					tournamentId: tournament.id,
+				});
+
+				const result = await action({
+					params: { eventId: EVENT_ID },
+					context: mockContext,
+					request: new Request('http://localhost/admin/events/event-1/tournaments', {
+						method: 'POST',
+						body: formData,
+					}),
+				});
+
+				expect(result).toBeInstanceOf(Response);
+				const data = await result.json();
+				expect(data).not.toBeNull();
+				expect(data!.type).toBe('error');
+				expect(data!.source).toBe('generate');
+				expect(data!.message).toContain('奇数');
+			});
+
+			it('fails with insufficient solo participants', async () => {
+				const tournament = tournamentsMemory.createTournament(EVENT_ID, {
+					name: 'Solo Tournament',
+					entryMode: 'solo'
+				});
+				const player1 = playersMemory.createPlayer(EVENT_ID, { name: 'Player 1' });
+				
+				// Solo参加者として登録（1名のみ）
+				tournamentParticipantsMemory.addSolo(tournament.id, player1.id);
+
+				const formData = createFormData({
+					_intent: 'generate',
+					tournamentId: tournament.id,
+				});
+
+				const result = await action({
+					params: { eventId: EVENT_ID },
+					context: mockContext,
+					request: new Request('http://localhost/admin/events/event-1/tournaments', {
+						method: 'POST',
+						body: formData,
+					}),
+				});
+
+				expect(result).toBeInstanceOf(Response);
+				const data = await result.json();
+				expect(data).not.toBeNull();
+				expect(data!.type).toBe('error');
+				expect(data!.source).toBe('generate');
+				expect(data!.message).toContain('少なくとも2名');
 			});
 		});
 	});

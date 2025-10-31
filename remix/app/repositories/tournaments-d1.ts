@@ -6,7 +6,7 @@ export const createTournamentsRepositoryD1 = (db: D1Database) => {
 		async listTournaments(eventId: string): Promise<TournamentRecord[]> {
 			const result = await db
 				.prepare(
-					'SELECT id, event_id, name, format, seeding_mode, created_at FROM tournaments WHERE event_id = ? ORDER BY name COLLATE NOCASE'
+					'SELECT id, event_id, name, format, seeding_mode, entry_mode, grand_finals_format, created_at FROM tournaments WHERE event_id = ? ORDER BY name COLLATE NOCASE'
 				)
 				.bind(eventId)
 				.all<{
@@ -15,6 +15,8 @@ export const createTournamentsRepositoryD1 = (db: D1Database) => {
 					name: string;
 					format: string;
 					seeding_mode: string;
+					entry_mode: string;
+					grand_finals_format: string;
 					created_at: string;
 				}>();
 
@@ -25,13 +27,17 @@ export const createTournamentsRepositoryD1 = (db: D1Database) => {
 					name: string;
 					format: string;
 					seeding_mode: string;
+					entry_mode: string;
+					grand_finals_format: string;
 					created_at: string;
 				}) => ({
 					id: row.id,
 					eventId: row.event_id,
 					name: row.name,
-					format: row.format as 'single-elimination',
+					format: row.format as 'single-elimination' | 'double-elimination' | 'ffa-2up',
 					seedingMode: row.seeding_mode as 'random' | 'manual',
+					entryMode: (row.entry_mode || 'pair') as 'pair' | 'solo',
+					grandFinalsFormat: (row.grand_finals_format || 'single') as 'single' | 'reset',
 					createdAt: row.created_at
 				})) || []
 			);
@@ -42,13 +48,15 @@ export const createTournamentsRepositoryD1 = (db: D1Database) => {
 			const name = data.name.trim();
 			const format = data.format || 'single-elimination';
 			const seedingMode = data.seedingMode || 'random';
+			const entryMode = data.entryMode || 'pair';
+			const grandFinalsFormat = data.grandFinalsFormat || 'single';
 			const createdAt = new Date().toISOString();
 
 			await db
 				.prepare(
-					'INSERT INTO tournaments (id, event_id, name, format, seeding_mode, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+					'INSERT INTO tournaments (id, event_id, name, format, seeding_mode, entry_mode, grand_finals_format, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
 				)
-				.bind(id, eventId, name, format, seedingMode, createdAt)
+				.bind(id, eventId, name, format, seedingMode, entryMode, grandFinalsFormat, createdAt)
 				.run();
 
 			return {
@@ -57,6 +65,8 @@ export const createTournamentsRepositoryD1 = (db: D1Database) => {
 				name,
 				format,
 				seedingMode,
+				entryMode,
+				grandFinalsFormat,
 				createdAt
 			};
 		},
@@ -64,7 +74,7 @@ export const createTournamentsRepositoryD1 = (db: D1Database) => {
 		async ensureTournament(tournamentId: string): Promise<TournamentRecord> {
 			const result = await db
 				.prepare(
-					'SELECT id, event_id, name, format, seeding_mode, created_at FROM tournaments WHERE id = ?'
+					'SELECT id, event_id, name, format, seeding_mode, entry_mode, grand_finals_format, created_at FROM tournaments WHERE id = ?'
 				)
 				.bind(tournamentId)
 				.first<{
@@ -73,6 +83,8 @@ export const createTournamentsRepositoryD1 = (db: D1Database) => {
 					name: string;
 					format: string;
 					seeding_mode: string;
+					entry_mode: string;
+					grand_finals_format: string;
 					created_at: string;
 				}>();
 
@@ -84,8 +96,10 @@ export const createTournamentsRepositoryD1 = (db: D1Database) => {
 				id: result.id,
 				eventId: result.event_id,
 				name: result.name,
-				format: result.format as 'single-elimination',
+				format: result.format as 'single-elimination' | 'double-elimination' | 'ffa-2up',
 				seedingMode: result.seeding_mode as 'random' | 'manual',
+				entryMode: (result.entry_mode || 'pair') as 'pair' | 'solo',
+				grandFinalsFormat: (result.grand_finals_format || 'single') as 'single' | 'reset',
 				createdAt: result.created_at
 			};
 		},
@@ -99,12 +113,14 @@ export const createTournamentsRepositoryD1 = (db: D1Database) => {
 			const name = data.name.trim();
 			const format = data.format || existing.format;
 			const seedingMode = data.seedingMode || existing.seedingMode;
+			const entryMode = data.entryMode ?? existing.entryMode;
+			const grandFinalsFormat = data.grandFinalsFormat ?? existing.grandFinalsFormat;
 
 			await db
 				.prepare(
-					'UPDATE tournaments SET name = ?, format = ?, seeding_mode = ? WHERE id = ?'
+					'UPDATE tournaments SET name = ?, format = ?, seeding_mode = ?, entry_mode = ?, grand_finals_format = ? WHERE id = ?'
 				)
-				.bind(name, format, seedingMode, tournamentId)
+				.bind(name, format, seedingMode, entryMode, grandFinalsFormat, tournamentId)
 				.run();
 
 			return {
@@ -113,6 +129,8 @@ export const createTournamentsRepositoryD1 = (db: D1Database) => {
 				name,
 				format,
 				seedingMode,
+				entryMode,
+				grandFinalsFormat,
 				createdAt: existing.createdAt
 			};
 		},
@@ -144,13 +162,15 @@ export const createTournamentsRepositoryD1 = (db: D1Database) => {
 				const id = entry.id?.trim() || generateUUID();
 				const format = entry.format || 'single-elimination';
 				const seedingMode = entry.seedingMode || 'random';
+				const entryMode = entry.entryMode || 'pair';
+				const grandFinalsFormat = entry.grandFinalsFormat || 'single';
 				const createdAt = new Date().toISOString();
 
 				await db
 					.prepare(
-						'INSERT INTO tournaments (id, event_id, name, format, seeding_mode, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+						'INSERT INTO tournaments (id, event_id, name, format, seeding_mode, entry_mode, grand_finals_format, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
 					)
-					.bind(id, eventId, name, format, seedingMode, createdAt)
+					.bind(id, eventId, name, format, seedingMode, entryMode, grandFinalsFormat, createdAt)
 					.run();
 
 				records.push({
@@ -159,6 +179,8 @@ export const createTournamentsRepositoryD1 = (db: D1Database) => {
 					name,
 					format,
 					seedingMode,
+					entryMode,
+					grandFinalsFormat,
 					createdAt
 				});
 			}
