@@ -101,6 +101,14 @@ export const createTeamsRepositoryD1 = (db: D1Database) => {
 				.prepare('INSERT INTO team_members (id, team_id, player_id) VALUES (?, ?, ?)')
 				.bind(generateUUID(), teamId, playerId)
 				.run();
+		},
+		async listTeamMemberIds(teamId: string): Promise<string[]> {
+			const result = await db
+				.prepare('SELECT player_id FROM team_members WHERE team_id = ?')
+				.bind(teamId)
+				.all<{ player_id: string }>();
+
+			return (result.results || []).map((row) => row.player_id);
 		}
 	};
 };

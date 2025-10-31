@@ -41,6 +41,8 @@ type LoaderData = {
 	teams: TeamRecord[];
 	players: PlayerRecord[];
 	pairs: PairRecord[];
+	teamAPlayerIds: string[];
+	teamBPlayerIds: string[];
 };
 
 type MutationSource = "assignSlot";
@@ -68,7 +70,12 @@ const fetchBattleContext = async (db: DatabaseContext, eventId: string, battleId
 		db.pairs.listPairs(eventId),
 	]);
 
-	return { battle, slots, teams, players, pairs } satisfies Omit<LoaderData, "eventId" | "battleId">;
+	const [teamAPlayerIds, teamBPlayerIds] = await Promise.all([
+		db.teams.listTeamMemberIds(battle.team_a_id),
+		db.teams.listTeamMemberIds(battle.team_b_id),
+	]);
+
+	return { battle, slots, teams, players, pairs, teamAPlayerIds, teamBPlayerIds } satisfies Omit<LoaderData, "eventId" | "battleId">;
 };
 
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
@@ -245,6 +252,7 @@ function SlotAssignmentForm({
 	teams,
 	players,
 	pairs,
+	teamMemberIds,
 	isSubmitting,
 	isTeamA,
 }: {
@@ -255,6 +263,7 @@ function SlotAssignmentForm({
 	teams: TeamRecord[];
 	players: PlayerRecord[];
 	pairs: PairRecord[];
+	teamMemberIds: string[];
 	isSubmitting: boolean;
 	isTeamA: boolean;
 }) {
@@ -265,15 +274,23 @@ function SlotAssignmentForm({
 	const [player1Id, setPlayer1Id] = useState<string>(slot?.player1_id ?? "");
 	const [player2Id, setPlayer2Id] = useState<string>(slot?.player2_id ?? "");
 
+	const memberSet = useMemo(() => new Set(teamMemberIds), [teamMemberIds]);
+
 	const teamPlayers = useMemo(() => {
-		// チームに所属するプレイヤーを取得（現状は全プレイヤーを表示）
-		return players;
-	}, [players]);
+		// チームに所属するプレイヤーのみを表示
+		return players.filter((p) => memberSet.has(p.id));
+	}, [players, memberSet]);
 
 	const teamPairs = useMemo(() => {
-		// チームに所属するペアを取得（現状は全ペアを表示）
-		return pairs;
-	}, [pairs]);
+		// チームに所属するペアのみを表示（両プレイヤーとも同じチームに所属している場合のみ）
+		return pairs.filter(
+			(pr) =>
+				pr.player1_id &&
+				pr.player2_id &&
+				memberSet.has(pr.player1_id) &&
+				memberSet.has(pr.player2_id),
+		);
+	}, [pairs, memberSet]);
 
 	const borderColor = isTeamA ? "border-blue-300" : "border-red-300";
 	const focusRingColor = isTeamA ? "focus:ring-blue-200" : "focus:ring-red-200";
@@ -485,6 +502,7 @@ export default function TeamBattleLineupRoute() {
 											teams={loaderData.teams}
 											players={loaderData.players}
 											pairs={loaderData.pairs}
+											teamMemberIds={loaderData.teamAPlayerIds}
 											isSubmitting={isSubmitting}
 											isTeamA={true}
 										/>
@@ -529,6 +547,7 @@ export default function TeamBattleLineupRoute() {
 											teams={loaderData.teams}
 											players={loaderData.players}
 											pairs={loaderData.pairs}
+											teamMemberIds={loaderData.teamBPlayerIds}
 											isSubmitting={isSubmitting}
 											isTeamA={false}
 										/>

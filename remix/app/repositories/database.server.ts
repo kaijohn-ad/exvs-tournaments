@@ -83,6 +83,7 @@ export interface DatabaseContext {
 		deleteTeam(eventId: string, teamId: string): Promise<void>;
 		setTeams(eventId: string, teams: teamsMemory.TeamImportData[]): Promise<teamsMemory.TeamRecord[]>;
 		addTeamMember(teamId: string, playerId: string): Promise<void>;
+		listTeamMemberIds(teamId: string): Promise<string[]>;
 	};
 	teamBattles: {
 		listTeamBattles(eventId: string): Promise<teamBattlesMemory.TeamBattleRecord[]>;
@@ -368,9 +369,11 @@ const wrapMemoryTeams = () => ({
 	async setTeams(eventId: string, teams: teamsMemory.TeamImportData[]) {
 		return teamsMemory.setTeams(eventId, teams);
 	},
-	async addTeamMember(teamId: string, _playerId: string) {
-		// memory store does not track team members; no-op for compatibility
-		return;
+	async addTeamMember(teamId: string, playerId: string) {
+		return Promise.resolve(teamsMemory.addTeamMember(teamId, playerId));
+	},
+	async listTeamMemberIds(teamId: string) {
+		return Promise.resolve(teamsMemory.listTeamMemberIds(teamId));
 	},
 });
 
