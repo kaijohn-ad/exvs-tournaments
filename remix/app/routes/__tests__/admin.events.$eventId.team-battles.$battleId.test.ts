@@ -100,6 +100,15 @@ describe("admin.events.$eventId.team-battles.$battleId action - KOTH", () => {
 		created_at: new Date().toISOString(),
 	};
 
+	const mockPairA1 = {
+		id: "pair-a-1",
+		event_id: eventId,
+		player1_id: "player-a3",
+		player2_id: "player-a4",
+		seed: null,
+		created_at: new Date().toISOString(),
+	};
+
 	beforeEach(() => {
 		vi.clearAllMocks();
 	});
@@ -488,6 +497,196 @@ describe("admin.events.$eventId.team-battles.$battleId action - KOTH", () => {
 			const data = await result.json();
 			expect(data.type).toBe("error");
 			expect(data.message).toContain("勝ち抜き戦ではありません");
+		});
+	});
+
+	describe("recordKothFriendlyMatch", () => {
+		const mockSlotA1 = {
+			id: "slot-a-1",
+			team_battle_id: battleId,
+			team_id: teamAId,
+			slot_index: 1,
+			assignment_type: "pair" as const,
+			pair_id: "pair-a-1",
+			player1_id: null,
+			player2_id: null,
+		};
+
+		const mockSlotA2 = {
+			id: "slot-a-2",
+			team_battle_id: battleId,
+			team_id: teamAId,
+			slot_index: 2,
+			assignment_type: "pair" as const,
+			pair_id: "pair-a-2",
+			player1_id: null,
+			player2_id: null,
+		};
+
+		test("正常系: 最後の勝者を含むエキシビションを記録", async () => {
+			// チームAが勝利して終了した状態をシミュレート
+			const finishedBattle = { ...mockKothBattle, status: "completed" };
+			const finishedMatches = [
+				{ winner_side: "a" as const, slot_index: 0 },
+				{ winner_side: "a" as const, slot_index: 1 },
+				{ winner_side: "a" as const, slot_index: 2 },
+			];
+
+			mockDatabase.teamBattles.ensureTeamBattle.mockResolvedValue(finishedBattle);
+			mockDatabase.matches.listMatches.mockResolvedValue(
+				finishedMatches.map((m, idx) => ({
+					id: `match-${idx + 1}`,
+					context: "teamBattle" as const,
+					context_id: battleId,
+					slot_index: m.slot_index,
+					side_a_type: "pair" as const,
+					side_a_pair_id: "pair-a-0",
+					side_b_type: "pair" as const,
+					side_b_pair_id: "pair-b-0",
+					side_a_player1_id: null,
+					side_a_player2_id: null,
+					side_b_player1_id: null,
+					side_b_player2_id: null,
+					score_a: 3,
+					score_b: 1,
+					winner_side: m.winner_side,
+					status: "completed",
+					played_at: new Date().toISOString(),
+				})),
+			);
+			mockDatabase.teamBattleSlots.listSlotsByBattle.mockResolvedValue([
+				mockSlotA0,
+				mockSlotA1,
+				mockSlotA2,
+			]);
+			mockDatabase.pairs.ensurePair
+				.mockResolvedValueOnce(mockPairA0)
+				.mockResolvedValueOnce(mockPairA1);
+			mockDatabase.matches.createMatch.mockResolvedValue({
+				id: "exhibition-1",
+				context: "teamBattle",
+				context_id: battleId,
+				slot_index: null,
+				side_a_type: "pair",
+				side_a_pair_id: "pair-a-0",
+				side_b_type: "pair",
+				side_b_pair_id: "pair-a-1",
+				side_a_player1_id: null,
+				side_a_player2_id: null,
+				side_b_player1_id: null,
+				side_b_player2_id: null,
+				score_a: 2,
+				score_b: 1,
+				winner_side: "a",
+				status: "completed",
+				played_at: new Date().toISOString(),
+			});
+
+			const formData = new FormData();
+			formData.append("_intent", "recordKothFriendlyMatch");
+			formData.append("slotAId", "slot-a-0"); // 最後の勝者（現在の出場順）
+			formData.append("slotBId", "slot-a-1"); // 残りスロット
+			formData.append("scoreA", "2");
+			formData.append("scoreB", "1");
+			formData.append("winnerSide", "a");
+
+			const result = await action({
+				params: { eventId, battleId },
+				context: createContext(),
+				request: new Request("http://localhost", {
+					method: "POST",
+					body: formData,
+				}),
+			});
+
+			if (result.status !== 200) {
+				const errorData = await result.json();
+				console.error("Error:", errorData);
+			}
+			expect(result.status).toBe(200);
+			const data = await result.json();
+			expect(data.type).toBe("success");
+			expect(data.message).toContain("追加対戦（エキシビション）を記録しました");
+
+			expect(mockDatabase.matches.createMatch).toHaveBeenCalledWith(
+				expect.objectContaining({
+					context: "teamBattle",
+					context_id: battleId,
+					slot_index: null,
+					side_a_type: "pair",
+					side_a_pair_id: "pair-a-0",
+					side_b_type: "pair",
+					side_b_pair_id: "pair-a-1",
+					score_a: 2,
+					score_b: 1,
+					winner_side: "a",
+				}),
+			);
+		});
+
+		test("エラー: 現在の出場順より前のスロットを使用", async () => {
+			// チームAが勝利して終了した状態（現在の出場順は1）
+			// 試合1: A勝利 → B敗北、Bは次の順番(1)へ
+			// 試合2: B勝利 → A敗北、Aは次の順番(1)へ
+			// 試合3: A勝利 → B敗北、Bは次の順番(2)へ、bLosses=2
+			// 試合4: A勝利 → B敗北、bLosses=3 >= 3 → 終了、aCurrentIndex=1
+			const finishedBattle = { ...mockKothBattle, status: "completed" };
+			const finishedMatches = [
+				{ winner_side: "a" as const, slot_index: 0 },
+				{ winner_side: "b" as const, slot_index: 0 },
+				{ winner_side: "a" as const, slot_index: 1 },
+				{ winner_side: "a" as const, slot_index: 1 },
+			];
+
+			mockDatabase.teamBattles.ensureTeamBattle.mockResolvedValue(finishedBattle);
+			mockDatabase.matches.listMatches.mockResolvedValue(
+				finishedMatches.map((m, idx) => ({
+					id: `match-${idx + 1}`,
+					context: "teamBattle" as const,
+					context_id: battleId,
+					slot_index: m.slot_index,
+					side_a_type: "pair" as const,
+					side_a_pair_id: "pair-a-0",
+					side_b_type: "pair" as const,
+					side_b_pair_id: "pair-b-0",
+					side_a_player1_id: null,
+					side_a_player2_id: null,
+					side_b_player1_id: null,
+					side_b_player2_id: null,
+					score_a: 3,
+					score_b: 1,
+					winner_side: m.winner_side,
+					status: "completed",
+					played_at: new Date().toISOString(),
+				})),
+			);
+			mockDatabase.teamBattleSlots.listSlotsByBattle.mockResolvedValue([
+				mockSlotA0,
+				mockSlotA1,
+				mockSlotA2,
+			]);
+
+			const formData = new FormData();
+			formData.append("_intent", "recordKothFriendlyMatch");
+			formData.append("slotAId", "slot-a-0"); // 現在の出場順より前
+			formData.append("slotBId", "slot-a-2");
+			formData.append("scoreA", "2");
+			formData.append("scoreB", "1");
+			formData.append("winnerSide", "a");
+
+			const result = await action({
+				params: { eventId, battleId },
+				context: createContext(),
+				request: new Request("http://localhost", {
+					method: "POST",
+					body: formData,
+				}),
+			});
+
+			expect(result.status).toBe(400);
+			const data = await result.json();
+			expect(data.type).toBe("error");
+			expect(data.message).toContain("現在の出場順を含む以降のスロットのみ使用できます");
 		});
 	});
 });

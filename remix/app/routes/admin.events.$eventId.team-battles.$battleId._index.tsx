@@ -986,21 +986,21 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 					);
 				}
 
-				// 両方のスロットが現在のインデックスより後ろにあることを確認
+				// 両方のスロットが現在のインデックスを含む以降であることを確認
 				const winnerCurrentIndex =
 					kothState.winnerTeamId === battle.team_a_id
 						? kothState.aCurrentIndex
 						: kothState.bCurrentIndex;
 
-				if (
-					slotA.slot_index <= winnerCurrentIndex ||
-					slotB.slot_index <= winnerCurrentIndex
-				) {
+				const isAllowed = (slot: { slot_index: number | null }) =>
+					slot.slot_index !== null && slot.slot_index >= winnerCurrentIndex;
+
+				if (!isAllowed(slotA) || !isAllowed(slotB)) {
 					return json<ActionError>(
 						{
 							type: "error",
 							source: intent,
-							message: "追加対戦は、現在の出場順より後ろのスロットのみ使用できます。",
+							message: "追加対戦は、現在の出場順を含む以降のスロットのみ使用できます。",
 						},
 						{ status: 400 },
 					);
@@ -1116,12 +1116,31 @@ function KothBattleUI({
 
 	// 勝者側チームの残りスロットを取得（追加対戦用）
 	const winnerTeamId = kothState.winnerTeamId;
+	const winnerCurrentIndex = winnerTeamId === battle.team_a_id
+		? kothState.aCurrentIndex
+		: winnerTeamId === battle.team_b_id
+		? kothState.bCurrentIndex
+		: -1;
+	
+	// 最後に勝ったスロット（現在の出場順）を取得
+	const winnerCurrentSlot = winnerTeamId && winnerCurrentIndex >= 0
+		? slots.find(
+				(slot) => slot.team_id === winnerTeamId && slot.slot_index === winnerCurrentIndex
+			)
+		: undefined;
+	
 	const winnerRemainingSlots = winnerTeamId === battle.team_a_id 
 		? remainingTeamASlots 
 		: winnerTeamId === battle.team_b_id 
 		? remainingTeamBSlots 
 		: [];
-	const canPlayFriendlyMatch = kothState.finished && winnerRemainingSlots.length >= 2;
+	
+	// エキシビション候補: 最後に勝ったスロット + 残りスロット
+	const exhibitionCandidates = winnerCurrentSlot
+		? [...winnerRemainingSlots, winnerCurrentSlot]
+		: winnerRemainingSlots;
+	
+	const canPlayFriendlyMatch = kothState.finished && exhibitionCandidates.length >= 2;
 
 	return (
 		<>
@@ -1227,7 +1246,7 @@ function KothBattleUI({
 								<h3 className="text-base font-semibold text-indigo-900">追加対戦（エキシビション）</h3>
 							</div>
 							<p className="text-sm text-indigo-800">
-								勝者側チーム（{getTeamName(winnerTeamId ?? "")}）の残ったプレイヤー同士で追加対戦を楽しむことができます。
+								勝者側チーム（{getTeamName(winnerTeamId ?? "")}）のプレイヤー同士（直前の勝者を含む）で追加対戦を楽しむことができます。
 							</p>
 						</div>
 
@@ -1244,7 +1263,7 @@ function KothBattleUI({
 										className="rounded-lg border border-slate-300 px-3 py-2 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
 									>
 										<option value="">選択してください</option>
-										{winnerRemainingSlots.map((slot) => (
+										{exhibitionCandidates.map((slot) => (
 											<option key={slot.id} value={slot.id}>
 												{slot.slot_index + 1}番手:{" "}
 												{slot.assignment_type === "pair" ? (
@@ -1273,7 +1292,7 @@ function KothBattleUI({
 										className="rounded-lg border border-slate-300 px-3 py-2 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
 									>
 										<option value="">選択してください</option>
-										{winnerRemainingSlots.map((slot) => (
+										{exhibitionCandidates.map((slot) => (
 											<option key={slot.id} value={slot.id}>
 												{slot.slot_index + 1}番手:{" "}
 												{slot.assignment_type === "pair" ? (

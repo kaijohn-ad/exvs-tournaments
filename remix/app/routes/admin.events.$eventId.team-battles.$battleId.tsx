@@ -84,7 +84,8 @@ type MutationSource =
 	| "finalizeBattle"
 	| "recordTiebreaker"
 	| "recordKothMatch"
-	| "deleteKothMatch";
+	| "deleteKothMatch"
+	| "recordKothFriendlyMatch";
 
 type ActionSuccess = {
 	type: "success";
@@ -867,6 +868,180 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 					type: "success",
 					source: intent,
 					message: "最後の試合結果を削除しました。",
+				});
+			}
+
+			case "recordKothFriendlyMatch": {
+				const slotAIdRaw = normalizeText(formData.get("slotAId"));
+				const slotBIdRaw = normalizeText(formData.get("slotBId"));
+				const scoreARaw = normalizeText(formData.get("scoreA"));
+				const scoreBRaw = normalizeText(formData.get("scoreB"));
+				const winnerSideRaw = normalizeText(formData.get("winnerSide"));
+
+				if (!slotAIdRaw || !slotBIdRaw) {
+					return json<ActionError>(
+						{
+							type: "error",
+							source: intent,
+							message: "Side AとSide Bのスロットを選択してください。",
+						},
+						{ status: 400 },
+					);
+				}
+
+				if (slotAIdRaw === slotBIdRaw) {
+					return json<ActionError>(
+						{
+							type: "error",
+							source: intent,
+							message: "Side AとSide Bは異なるスロットを選択してください。",
+						},
+						{ status: 400 },
+					);
+				}
+
+				const scoreA = parseInteger(scoreARaw ?? "");
+				const scoreB = parseInteger(scoreBRaw ?? "");
+
+				if (scoreA === null || scoreB === null || scoreA < 0 || scoreB < 0) {
+					return json<ActionError>(
+						{
+							type: "error",
+							source: intent,
+							message: "スコアは0以上の整数で入力してください。",
+						},
+						{ status: 400 },
+					);
+				}
+
+				if (winnerSideRaw !== "a" && winnerSideRaw !== "b") {
+					return json<ActionError>(
+						{
+							type: "error",
+							source: intent,
+							message: "勝者を選択してください。",
+						},
+						{ status: 400 },
+					);
+				}
+
+				const battle = await db.teamBattles.ensureTeamBattle(eventId, battleId);
+
+				if (battle.format !== "koth") {
+					return json<ActionError>(
+						{
+							type: "error",
+							source: intent,
+							message: "この団体戦は勝ち抜き戦ではありません。",
+						},
+						{ status: 400 },
+					);
+				}
+
+				// KOTH状態を計算して終了確認
+				const existingMatches = await db.matches.listMatches("teamBattle", battleId);
+				const mainMatches = existingMatches.filter((m) => m.slot_index !== null);
+				const kothState = computeKothState(
+					battle.slots_count,
+					battle.team_a_id,
+					battle.team_b_id,
+					mainMatches,
+				);
+
+				if (!kothState.finished || !kothState.winnerTeamId) {
+					return json<ActionError>(
+						{
+							type: "error",
+							source: intent,
+							message: "追加対戦は、団体戦が終了した後にのみ登録できます。",
+						},
+						{ status: 400 },
+					);
+				}
+
+				// スロットを取得
+				const slots = await db.teamBattleSlots.listSlotsByBattle(battleId);
+				const slotA = slots.find((s) => s.id === slotAIdRaw);
+				const slotB = slots.find((s) => s.id === slotBIdRaw);
+
+				if (!slotA || !slotB) {
+					return json<ActionError>(
+						{
+							type: "error",
+							source: intent,
+							message: "選択されたスロットが見つかりません。",
+						},
+						{ status: 404 },
+					);
+				}
+
+				// 両方のスロットが勝者側チームに属していることを確認
+				if (slotA.team_id !== kothState.winnerTeamId || slotB.team_id !== kothState.winnerTeamId) {
+					return json<ActionError>(
+						{
+							type: "error",
+							source: intent,
+							message: "追加対戦は勝者側チームのスロットのみ使用できます。",
+						},
+						{ status: 400 },
+					);
+				}
+
+				// 両方のスロットが現在のインデックスを含む以降であることを確認
+				const winnerCurrentIndex =
+					kothState.winnerTeamId === battle.team_a_id
+						? kothState.aCurrentIndex
+						: kothState.bCurrentIndex;
+
+				const isAllowed = (slot: { slot_index: number | null }) =>
+					slot.slot_index !== null && slot.slot_index >= winnerCurrentIndex;
+
+				if (!isAllowed(slotA) || !isAllowed(slotB)) {
+					return json<ActionError>(
+						{
+							type: "error",
+							source: intent,
+							message: "追加対戦は、現在の出場順を含む以降のスロットのみ使用できます。",
+						},
+						{ status: 400 },
+					);
+				}
+
+				// プレイヤー情報を取得
+				const [slotAPlayers, slotBPlayers] = await Promise.all([
+					resolveSlotPlayers(db, eventId, slotA),
+					resolveSlotPlayers(db, eventId, slotB),
+				]);
+
+				const [slotAPlayer1, slotAPlayer2] =
+					slotAPlayers.length > 0 ? slotAPlayers : [slotA.player1_id, slotA.player2_id];
+				const [slotBPlayer1, slotBPlayer2] =
+					slotBPlayers.length > 0 ? slotBPlayers : [slotB.player1_id, slotB.player2_id];
+
+				// 追加対戦を記録（slot_index: null）
+				await db.matches.createMatch({
+					context: "teamBattle",
+					context_id: battleId,
+					slot_index: null,
+					side_a_type: slotA.assignment_type,
+					side_a_pair_id: slotA.pair_id,
+					side_a_player1_id: slotAPlayer1 ?? undefined,
+					side_a_player2_id: slotAPlayer2 ?? undefined,
+					side_b_type: slotB.assignment_type,
+					side_b_pair_id: slotB.pair_id,
+					side_b_player1_id: slotBPlayer1 ?? undefined,
+					side_b_player2_id: slotBPlayer2 ?? undefined,
+					score_a: scoreA,
+					score_b: scoreB,
+					winner_side: winnerSideRaw,
+				});
+
+				// プレイヤー統計やバトルステータスは更新しない
+
+				return json<ActionSuccess>({
+					type: "success",
+					source: intent,
+					message: "追加対戦（エキシビション）を記録しました。",
 				});
 			}
 		}
