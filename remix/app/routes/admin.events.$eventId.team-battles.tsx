@@ -7,6 +7,7 @@ import {
 import {
 	Form,
 	Link,
+	Outlet,
 	useActionData,
 	useLoaderData,
 	useNavigation,
@@ -768,6 +769,7 @@ export default function TeamBattlesRoute() {
 												<h3 className="text-lg font-semibold text-slate-900">
 													<Link
 														to={`/admin/events/${loaderData.eventId}/team-battles/${battle.id}`}
+														reloadDocument
 														className="transition hover:text-blue-600"
 													>
 														{getTeamName(battle.team_a_id)} vs {getTeamName(battle.team_b_id)}
@@ -818,12 +820,14 @@ export default function TeamBattlesRoute() {
 												<div className="flex flex-col gap-2 text-sm text-blue-600">
 													<Link
 														to={`/admin/events/${loaderData.eventId}/team-battles/${battle.id}`}
+														reloadDocument
 														className="transition hover:text-blue-500"
 													>
 														進行管理 →
 													</Link>
 													<Link
 														to={`/admin/events/${loaderData.eventId}/team-battles/${battle.id}/lineup`}
+														reloadDocument
 														className="transition hover:text-blue-500"
 													>
 														ラインナップ編集 →
@@ -848,6 +852,8 @@ export default function TeamBattlesRoute() {
 					※ ラインナップ編集は各団体戦カードの「ラインナップ編集」から行えます。
 				</p>
 			</section>
+
+			<Outlet />
 		</div>
 	);
 }

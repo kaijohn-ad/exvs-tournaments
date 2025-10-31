@@ -35,6 +35,9 @@ export default defineConfig(({ mode }) => {
 			}),
 			tsconfigPaths(),
 		],
+		server: {
+			port: 5174,
+		},
 		ssr: {
 			resolve: {
 				conditions: ["workerd", "worker", "browser"],
