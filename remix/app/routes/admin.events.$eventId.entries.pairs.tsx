@@ -440,17 +440,17 @@ export default function PairsRoute() {
 	const [editorOpen, setEditorOpen] = useState(false);
 	const [editorPayload, setEditorPayload] = useState(pairsJson);
 	const [editorError, setEditorError] = useState<string | null>(null);
-
-	const downloadUrl = useMemo(() => {
-		const blob = new Blob([pairsJson], { type: "application/json" });
-		return URL.createObjectURL(blob);
-	}, [pairsJson]);
+	const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
 
 	useEffect(() => {
+		const url = URL.createObjectURL(
+			new Blob([pairsJson], { type: "application/json" })
+		);
+		setDownloadUrl(url);
 		return () => {
-			URL.revokeObjectURL(downloadUrl);
+			URL.revokeObjectURL(url);
 		};
-	}, [downloadUrl]);
+	}, [pairsJson]);
 
 	useEffect(() => {
 		if (actionData?.type === "error") {

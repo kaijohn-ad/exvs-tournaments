@@ -396,10 +396,7 @@ export default function PlayersRoute() {
 	const { players, playersJson } = usePlayersState(loaderData, actionData);
 
 	const [importPayload, setImportPayload] = useState<string>("");
-	const downloadUrl = useMemo(() => {
-		const blob = new Blob([playersJson], { type: "application/json" });
-		return URL.createObjectURL(blob);
-	}, [playersJson]);
+	const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
 
 	useEffect(() => {
 		const nextPayload =
@@ -409,12 +406,15 @@ export default function PlayersRoute() {
 		setImportPayload(nextPayload);
 	}, [actionData]);
 
-	useEffect(
-		() => () => {
-			URL.revokeObjectURL(downloadUrl);
-		},
-		[downloadUrl],
-	);
+	useEffect(() => {
+		const url = URL.createObjectURL(
+			new Blob([playersJson], { type: "application/json" })
+		);
+		setDownloadUrl(url);
+		return () => {
+			URL.revokeObjectURL(url);
+		};
+	}, [playersJson]);
 
 	const isSubmitting = navigation.state === "submitting";
 
