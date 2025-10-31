@@ -80,6 +80,14 @@ function createMockD1Database() {
 						}
 						return result;
 					}
+					// id = ? AND tournament_id = ? のパターン（ensureParticipantなど）
+					if (/\bid\s*=\s*\?\s+AND\s+tournament_id\s*=\s*\?/i.test(sql) && boundParams.length >= 2) {
+						let result = row.id === boundParams[0] && row.tournament_id === boundParams[1];
+						if (sql.includes("status = 'active'")) {
+							result = result && row.status === 'active';
+						}
+						return result;
+					}
 					// id = ? のパターン（tournament_id = ? などと一緒に使われない場合のみ）
 					if (/\bid\s*=\s*\?/i.test(sql) && !sql.includes('tournament_id = ?') && boundParams.length > 0) {
 						let result = row.id === boundParams[0];
