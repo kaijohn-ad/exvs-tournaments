@@ -59,6 +59,16 @@ jobs:
       working-directory: ./remix
       run: npm run build
 
+    - name: Apply D1 Migrations to Preview Database
+      if: github.event_name == 'pull_request'
+      working-directory: ./remix
+      env:
+        CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      run: |
+        echo "Applying migrations to Preview D1 database (exvs-tournaments-dev)..."
+        npx wrangler d1 migrations apply exvs-tournaments-dev --remote --env preview
+
     - name: Deploy to Cloudflare Pages
       id: deploy
       uses: cloudflare/pages-action@v1

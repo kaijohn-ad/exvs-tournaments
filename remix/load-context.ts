@@ -38,10 +38,13 @@ export function getLoadContext({ context }: GetLoadContextArgs): RemixAppLoadCon
 	const hasDB = !!cloudflare.env.DB;
 
 	// 開発環境ではメモリストアを使用
-	// プレビュー環境ではD1データベースが利用可能な場合はD1を使用、利用できない場合はメモリストアにフォールバック
+	// プレビュー環境では強制的にメモリストアを使用（USE_MEMORY_STORE=falseで明示的に無効化可能）
 	// 本番環境ではD1データベースが必須
+	// 明示的にUSE_MEMORY_STORE=falseが設定されている場合はそれを尊重
+	const explicitMemoryStore = process.env.USE_MEMORY_STORE;
 	const useMemoryStore =
-		process.env.USE_MEMORY_STORE === 'true' ||
+		explicitMemoryStore === 'true' ||
+		(explicitMemoryStore !== 'false' && stage === 'preview') ||
 		!hasDB ||
 		(stage === 'development' && !hasDB);
 

@@ -91,6 +91,26 @@ export async function loader({ params, context }: LoaderFunctionArgs) {
 			dbExists: !!context.db,
 			cloudflareEnv: context.cloudflare?.env ? Object.keys(context.cloudflare.env) : "undefined"
 		});
+
+		// データベース接続エラーの場合、より明確なエラーメッセージを返す
+		if (error instanceof Error) {
+			if (error.message.includes("D1 database is not available")) {
+				throw new Response(
+					"D1データベースが利用できません。データベースの設定を確認してください。",
+					{ status: 503 }
+				);
+			}
+
+			// D1スキーマ未初期化エラー（no such table）を検知
+			if (error.message.includes("no such table") || error.message.includes("no such column")) {
+				throw new Response(
+					"データベースが初期化されていません。マイグレーションを実行してください。",
+					{ status: 503 }
+				);
+			}
+		}
+
+		// その他のエラーはそのまま再スロー
 		throw error;
 	}
 }
