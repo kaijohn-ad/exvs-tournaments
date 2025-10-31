@@ -443,6 +443,11 @@ export default function PairsRoute() {
 	const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
 
 	useEffect(() => {
+		// SSR時は実行しない
+		if (typeof window === "undefined" || typeof URL === "undefined") {
+			return;
+		}
+
 		const url = URL.createObjectURL(
 			new Blob([pairsJson], { type: "application/json" })
 		);

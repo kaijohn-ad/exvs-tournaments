@@ -407,6 +407,11 @@ export default function PlayersRoute() {
 	}, [actionData]);
 
 	useEffect(() => {
+		// SSR時は実行しない
+		if (typeof window === "undefined" || typeof URL === "undefined") {
+			return;
+		}
+
 		const url = URL.createObjectURL(
 			new Blob([playersJson], { type: "application/json" })
 		);
