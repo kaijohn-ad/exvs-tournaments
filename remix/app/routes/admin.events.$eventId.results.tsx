@@ -1,10 +1,13 @@
 import { json, type LoaderFunctionArgs, type MetaFunction } from "@remix-run/cloudflare";
-import { useLoaderData } from "@remix-run/react";
+import { Link, useLoaderData } from "@remix-run/react";
 import { getDatabase } from "~/repositories/database.server";
 import type { MatchRecord } from "~/repositories/matches";
 import type { PlayerRecord } from "~/repositories/players";
 import type { PairRecord } from "~/repositories/pairs";
 import type { TournamentRecord } from "~/repositories/tournaments";
+import type { TeamRecord } from "~/repositories/teams";
+import type { TeamBattleRecord } from "~/repositories/team-battles";
+import type { TeamBattleSlotRecord } from "~/repositories/team-battle-slots";
 
 type LoaderData = {
 	eventId: string;
@@ -19,6 +22,9 @@ type LoaderData = {
 	pairs: PairRecord[];
 	tournaments: TournamentRecord[];
 	bracketMatchToTournamentMap: Record<string, string>; // bracket_match.id -> tournament.id
+	teams: TeamRecord[];
+	teamBattles: TeamBattleRecord[];
+	slotsByBattleId: Record<string, TeamBattleSlotRecord[]>;
 };
 
 export async function loader({ params, context }: LoaderFunctionArgs) {
@@ -42,8 +48,16 @@ export async function loader({ params, context }: LoaderFunctionArgs) {
 
 		// イベントに関連するトーナメントと団体戦のIDを取得
 		const teamBattles = await db.teamBattles.listTeamBattles(eventId);
+		const teams = await db.teams.listTeams(eventId);
 		const tournamentIds = new Set(tournaments.map(t => t.id));
 		const battleIds = new Set(teamBattles.map(b => b.id));
+
+		// 各団体戦のスロットを取得
+		const slotsByBattleId: Record<string, TeamBattleSlotRecord[]> = {};
+		for (const battle of teamBattles) {
+			const slots = await db.teamBattleSlots.listSlotsByBattle(battle.id);
+			slotsByBattleId[battle.id] = slots;
+		}
 
 		// ブラケットマッチIDからトーナメントIDへのマップを作成
 		const bracketMatchToTournamentMap = new Map<string, string>();
@@ -66,8 +80,8 @@ export async function loader({ params, context }: LoaderFunctionArgs) {
 			return false;
 		});
 
-		// 完了したマッチのみをフィルタリング
-		const completedMatches = eventMatches.filter(match => match.status === 'completed');
+		// 完了または進行中のマッチをフィルタリング（途中の進行状況も表示）
+		const completedMatches = eventMatches.filter(match => match.status === 'completed' || match.status === 'in_progress');
 
 		// MapをRecordに変換（シリアライズ可能にするため）
 		const bracketMatchToTournamentRecord: Record<string, string> = {};
@@ -88,6 +102,9 @@ export async function loader({ params, context }: LoaderFunctionArgs) {
 			pairs,
 			tournaments,
 			bracketMatchToTournamentMap: bracketMatchToTournamentRecord,
+			teams,
+			teamBattles,
+			slotsByBattleId,
 		});
 	} catch (error) {
 		console.error("[admin.events.$eventId.results:load] failed", {
@@ -104,11 +121,13 @@ export const meta: MetaFunction<typeof loader> = ({ data }) => [
 ];
 
 export default function AdminEventResultsRoute() {
-	const { eventId, event, matches, players, pairs, tournaments, bracketMatchToTournamentMap } = useLoaderData<typeof loader>();
+	const { eventId, event, matches, players, pairs, tournaments, bracketMatchToTournamentMap, teams, teamBattles, slotsByBattleId } = useLoaderData<typeof loader>();
 
 	// プレイヤー名とペア名のマップを作成
 	const playerNameMap = new Map(players.map((p) => [p.id, p.name]));
 	const pairMap = new Map(pairs.map((p) => [p.id, p]));
+	const teamNameMap = new Map(teams.map((t) => [t.id, t.name]));
+	const pairRecordMap = new Map(pairs.map((p) => [p.id, p]));
 
 	const getPairDisplayName = (pairId: string | null | undefined): string => {
 		if (!pairId) return "未確定";
@@ -117,6 +136,52 @@ export default function AdminEventResultsRoute() {
 		const player1Name = playerNameMap.get(pair.player1_id) ?? "?";
 		const player2Name = playerNameMap.get(pair.player2_id) ?? "?";
 		return `${player1Name} / ${player2Name}`;
+	};
+
+	// スロットのプレイヤー名をフォーマット
+	const formatSlotPlayers = (slot: TeamBattleSlotRecord): string => {
+		if (slot.assignment_type === "pair" && slot.pair_id) {
+			const pair = pairRecordMap.get(slot.pair_id);
+			if (pair) {
+				const player1Name = playerNameMap.get(pair.player1_id) ?? "?";
+				const player2Name = playerNameMap.get(pair.player2_id) ?? "?";
+				return `${player1Name} / ${player2Name}`;
+			}
+			return "(不明なペア)";
+		} else {
+			const player1Name = slot.player1_id ? (playerNameMap.get(slot.player1_id) ?? "?") : "-";
+			const player2Name = slot.player2_id ? (playerNameMap.get(slot.player2_id) ?? "?") : "-";
+			return `${player1Name} / ${player2Name}`;
+		}
+	};
+
+	// 団体戦のスコアを集計
+	const getBattleScore = (battleMatches: MatchRecord[]) => {
+		let a = 0;
+		let b = 0;
+		for (const match of battleMatches) {
+			if (match.winner_side === "a") {
+				a++;
+			} else if (match.winner_side === "b") {
+				b++;
+			}
+		}
+		return { a, b };
+	};
+
+	// スロットをslot_indexでグループ化
+	const groupSlotsByIndex = (slots: TeamBattleSlotRecord[], teamAId: string, teamBId: string) => {
+		const map = new Map<number, { a?: TeamBattleSlotRecord; b?: TeamBattleSlotRecord }>();
+		for (const slot of slots) {
+			const existing = map.get(slot.slot_index) ?? {};
+			if (slot.team_id === teamAId) {
+				existing.a = slot;
+			} else if (slot.team_id === teamBId) {
+				existing.b = slot;
+			}
+			map.set(slot.slot_index, existing);
+		}
+		return Array.from(map.entries()).sort((x, y) => x[0] - y[0]);
 	};
 
 	// 勝利数の集計（ペア単位）
@@ -215,6 +280,92 @@ export default function AdminEventResultsRoute() {
 							})}
 						</div>
 					)}
+				</section>
+			)}
+
+			{/* 団体戦結果 */}
+			{teamBattles.length > 0 && (
+				<section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+					<h3 className="text-lg font-semibold text-slate-900 mb-4">
+						団体戦結果 ({teamBattles.length})
+					</h3>
+					<div className="grid gap-4">
+						{teamBattles.map((battle) => {
+							const battleMatches = matches.filter(m => m.context === 'teamBattle' && m.context_id === battle.id);
+							const score = getBattleScore(battleMatches);
+							const slots = slotsByBattleId[battle.id] || [];
+							const groupedSlots = groupSlotsByIndex(slots, battle.team_a_id, battle.team_b_id);
+							const teamAName = teamNameMap.get(battle.team_a_id) ?? "(不明なチーム)";
+							const teamBName = teamNameMap.get(battle.team_b_id) ?? "(不明なチーム)";
+							const matchesBySlotIndex = new Map<number, MatchRecord>();
+							for (const match of battleMatches) {
+								if (match.slot_index !== null && match.slot_index !== undefined) {
+									matchesBySlotIndex.set(match.slot_index, match);
+								}
+							}
+
+							return (
+								<div key={battle.id} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+									<div className="mb-3 flex items-center justify-between">
+										<div>
+											<div className="font-medium text-slate-900">
+												{teamAName} vs {teamBName}
+											</div>
+											<div className="text-sm text-slate-600">
+												スコア: {score.a} - {score.b}
+											</div>
+											<div className="text-xs text-slate-500 mt-1">
+												ステータス: {battle.status === 'completed' ? '完了' : battle.status === 'in_progress' ? '進行中' : '未開始'}
+												{battle.result && ` / 結果: ${battle.result === 'team_a_win' ? teamAName + 'の勝利' : battle.result === 'team_b_win' ? teamBName + 'の勝利' : '引き分け'}`}
+											</div>
+										</div>
+										<Link
+											to={`/events/${eventId}/team-battles/${battle.id}/board`}
+											className="text-sm font-medium text-blue-600 hover:text-blue-800"
+										>
+											ボードを見る →
+										</Link>
+									</div>
+									{groupedSlots.length > 0 && (
+										<div className="mt-3 overflow-x-auto">
+											<table className="w-full text-xs">
+												<thead>
+													<tr className="border-b border-slate-200">
+														<th className="text-left py-1 px-2 font-medium text-slate-700">スロット</th>
+														<th className="text-left py-1 px-2 font-medium text-slate-700">Team A 出場</th>
+														<th className="text-left py-1 px-2 font-medium text-slate-700">Team B 出場</th>
+														<th className="text-center py-1 px-2 font-medium text-slate-700">結果</th>
+														<th className="text-center py-1 px-2 font-medium text-slate-700">スコア</th>
+													</tr>
+												</thead>
+												<tbody>
+													{groupedSlots.map(([slotIndex, slotPair]) => {
+														const match = matchesBySlotIndex.get(slotIndex);
+														const result = match ? (match.winner_side === 'a' ? 'A勝' : 'B勝') : '未実施';
+														const matchScore = match ? `${match.score_a} - ${match.score_b}` : 'ー';
+
+														return (
+															<tr key={slotIndex} className="border-b border-slate-100">
+																<td className="py-1 px-2 font-medium text-slate-900">{slotIndex + 1}</td>
+																<td className="py-1 px-2 text-slate-700">
+																	{slotPair.a ? formatSlotPlayers(slotPair.a) : '未割当'}
+																</td>
+																<td className="py-1 px-2 text-slate-700">
+																	{slotPair.b ? formatSlotPlayers(slotPair.b) : '未割当'}
+																</td>
+																<td className="py-1 px-2 text-center text-slate-700">{result}</td>
+																<td className="py-1 px-2 text-center text-slate-700">{matchScore}</td>
+															</tr>
+														);
+													})}
+												</tbody>
+											</table>
+										</div>
+									)}
+								</div>
+							);
+						})}
+					</div>
 				</section>
 			)}
 
